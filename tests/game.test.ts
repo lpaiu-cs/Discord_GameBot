@@ -312,6 +312,108 @@ test("공개 사망 결과는 웹 공개 채팅에도 시스템 메시지로 누
   assert.ok(publicSystemLines.some((line) => line.includes("시민 님이 밤사이 사망했습니다.")));
 });
 
+test("낮 투표는 한 번 제출하면 고정되고 공개 채팅에는 익명 투표 로그가 남는다", async () => {
+  const game = createTestGame("balance");
+  seedPlayers(game, [
+    { userId: "voter", displayName: "유권자", role: "citizen" },
+    { userId: "target", displayName: "루나", role: "mafia" },
+  ]);
+  game.phase = "vote";
+  game.phaseContext = phaseContext(5);
+  game["sendOrUpdateStatus"] = async () => undefined;
+
+  const result = await game.submitVote({} as Client, "voter", "target", 5);
+
+  assert.equal(result, "루나 님에게 투표했습니다.");
+  assert.equal(game.dayVotes.get("voter"), "target");
+  assert.equal(game.getPlayer("voter")?.voteLockedToday, true);
+  assert.ok(game.webChats.public.some((message) => message.kind === "system" && message.content === "누군가가 루나 님에게 투표했습니다."));
+  await assert.rejects(
+    () => game.submitVote({} as Client, "voter", "voter", 5),
+    /이미 낮 투표를 제출했습니다/,
+  );
+});
+
+test("찬반 투표는 한 번 제출하면 고정되고 공개 채팅에는 익명 로그가 남는다", async () => {
+  const game = createTestGame("balance");
+  seedPlayers(game, [
+    { userId: "voter", displayName: "유권자", role: "citizen" },
+    { userId: "target", displayName: "루나", role: "mafia" },
+  ]);
+  game.phase = "trial";
+  game.currentTrialTargetId = "target";
+  game.phaseContext = phaseContext(6);
+  game["sendOrUpdateStatus"] = async () => undefined;
+
+  const result = await game.submitTrialVote({} as Client, "voter", "yes", 6);
+
+  assert.equal(result, "처형 찬성에 투표했습니다.");
+  assert.equal(game.trialVotes.get("voter"), "yes");
+  assert.ok(game.webChats.public.some((message) => message.kind === "system" && message.content === "누군가가 찬성에 투표했습니다."));
+  await assert.rejects(
+    () => game.submitTrialVote({} as Client, "voter", "no", 6),
+    /이미 찬반 투표를 제출했습니다/,
+  );
+});
+
+test("토론 시간 조절은 누른 사람 이름과 함께 공개 채팅 로그를 남긴다", async () => {
+  const game = createTestGame("balance");
+  seedPlayers(game, [
+    { userId: "speaker", displayName: "민재", role: "citizen" },
+    { userId: "other", displayName: "루나", role: "mafia" },
+  ]);
+  game.phase = "discussion";
+  game.dayNumber = 2;
+  game.phaseContext = phaseContext(7);
+  game["sendOrUpdateStatus"] = async () => undefined;
+  game["restartTimer"] = () => undefined;
+
+  const result = await game.adjustDiscussionTime({} as Client, "speaker", "add", 7);
+
+  assert.equal(result, "토론 시간을 15초 늘렸습니다.");
+  assert.ok(game.webChats.public.some((message) => message.kind === "system" && message.content === "민재 님이 토론 시간을 15초 늘렸습니다."));
+});
+
+test("밤 시작 공개 로그는 간결한 시스템 메시지로 공개 채팅에 남는다", async () => {
+  const game = createTestGame("balance");
+  seedPlayers(game, [
+    { userId: "mafia", displayName: "루나", role: "mafia" },
+    { userId: "citizen", displayName: "민재", role: "citizen" },
+  ]);
+  game["syncSecretChannels"] = async () => undefined;
+  game["sendNightPrompts"] = async () => undefined;
+  game["sendPhaseMessage"] = async () => undefined;
+  game["sendOrUpdateStatus"] = async () => undefined;
+  game["restartTimer"] = () => undefined;
+  game.pendingSeductionTargetId = "citizen";
+
+  await game["beginNight"]({} as Client);
+
+  const publicSystemLines = game.webChats.public.filter((message) => message.kind === "system").map((message) => message.content);
+  assert.ok(publicSystemLines.includes("밤이 되었습니다."));
+  assert.ok(publicSystemLines.includes("민재 님은 오늘 밤 유혹 상태입니다."));
+});
+
+test("낮 시작 공개 로그는 몇 번째 날인지와 밤 결과를 함께 공개 채팅에 남긴다", async () => {
+  const game = createTestGame("balance");
+  seedPlayers(game, [
+    { userId: "mafia", displayName: "루나", role: "mafia" },
+    { userId: "citizen", displayName: "나미", role: "citizen" },
+  ]);
+  game.dayNumber = 3;
+  game["syncSecretChannels"] = async () => undefined;
+  game["sendPhaseMessage"] = async () => undefined;
+  game["sendReporterPublishPrompt"] = async () => undefined;
+  game["sendOrUpdateStatus"] = async () => undefined;
+  game["restartTimer"] = () => undefined;
+
+  await game["beginDiscussion"]({} as Client, ["나미 님이 마피아에게 살해당했습니다."]);
+
+  const publicSystemLines = game.webChats.public.filter((message) => message.kind === "system").map((message) => message.content);
+  assert.ok(publicSystemLines.includes("셋째 날이 밝았습니다."));
+  assert.ok(publicSystemLines.includes("나미 님이 마피아에게 살해당했습니다."));
+});
+
 test("밸런스 규칙에서는 영매가 먼저 성불한 밤 사망자를 성직자가 되살릴 수 없다", async () => {
   const game = createTestGame("balance");
   seedPlayers(game, [

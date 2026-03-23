@@ -410,19 +410,30 @@ function buildVoteControls(
   controls: DashboardActionControl[],
 ): void {
   if (player.alive && !game.bulliedToday.has(player.userId)) {
-    controls.push({
-      id: "day-vote",
-      type: "select",
-      actionType: "vote",
-      title: "낮 투표",
-      description: "처형 대상으로 한 명을 선택합니다.",
-      options: game.alivePlayers.map((target) => ({
-        label: target.displayName,
-        value: target.userId,
-      })),
-      currentValue: game.dayVotes.get(player.userId) ?? null,
-      currentLabel: labelForTarget(game, game.dayVotes.get(player.userId)),
-    });
+    const selectedTargetId = game.dayVotes.get(player.userId) ?? null;
+    if (selectedTargetId) {
+      controls.push({
+        id: "day-vote-submitted",
+        type: "info",
+        actionType: "vote_submitted",
+        title: "낮 투표 제출 완료",
+        description: `${labelForTarget(game, selectedTargetId) ?? "선택한 대상"} 님에게 투표를 제출했습니다.`,
+      });
+    } else {
+      controls.push({
+        id: "day-vote",
+        type: "select",
+        actionType: "vote",
+        title: "낮 투표",
+        description: "처형 대상으로 한 명을 선택합니다.",
+        options: game.alivePlayers.map((target) => ({
+          label: target.displayName,
+          value: target.userId,
+        })),
+        currentValue: null,
+        currentLabel: null,
+      });
+    }
   }
 
   if (game.bulliedToday.has(player.userId)) {
@@ -477,6 +488,18 @@ function buildTrialControls(
     return;
   }
 
+  const currentVote = game.trialVotes.get(player.userId) ?? null;
+  if (currentVote) {
+    controls.push({
+      id: "trial-vote-submitted",
+      type: "info",
+      actionType: "trial_vote_submitted",
+      title: "찬반 투표 제출 완료",
+      description: currentVote === "yes" ? "처형 찬성에 투표를 제출했습니다." : "처형 반대에 투표를 제출했습니다.",
+    });
+    return;
+  }
+
   controls.push({
     id: "trial-vote",
     type: "buttons",
@@ -489,9 +512,8 @@ function buildTrialControls(
       { label: "찬성", value: "yes" },
       { label: "반대", value: "no" },
     ],
-    currentValue: game.trialVotes.get(player.userId) ?? null,
-    currentLabel:
-      game.trialVotes.get(player.userId) === "yes" ? "찬성" : game.trialVotes.get(player.userId) === "no" ? "반대" : null,
+    currentValue: null,
+    currentLabel: null,
   });
 }
 

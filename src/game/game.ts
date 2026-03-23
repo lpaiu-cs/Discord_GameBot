@@ -66,6 +66,8 @@ const VOTE_SECONDS = 15;
 const DEFENSE_SECONDS = 15;
 const AFTERMATH_SELECTION_SECONDS = 15;
 
+const DAY_BREAK_LABELS = ["", "첫째 날", "둘째 날", "셋째 날", "넷째 날", "다섯째 날", "여섯째 날", "일곱째 날", "여덟째 날"];
+
 interface PromptDefinition {
   action: NightActionType;
   title: string;
@@ -274,6 +276,11 @@ export class MafiaGame {
 
   private appendPublicLine(line: string): void {
     this.lastPublicLines = [...this.lastPublicLines, line];
+    this.appendSystemChat("public", line);
+    this.bumpStateVersion();
+  }
+
+  private appendPublicActivityLog(line: string): void {
     this.appendSystemChat("public", line);
     this.bumpStateVersion();
   }
@@ -578,7 +585,13 @@ export class MafiaGame {
       throw new Error("투표 대상을 찾을 수 없습니다.");
     }
 
+    if (player.voteLockedToday || this.dayVotes.has(player.userId)) {
+      throw new Error("이미 낮 투표를 제출했습니다.");
+    }
+
+    player.voteLockedToday = true;
     this.dayVotes.set(player.userId, targetId);
+    this.appendPublicActivityLog(`누군가가 ${this.getPlayerOrThrow(targetId).displayName} 님에게 투표했습니다.`);
     await this.sendOrUpdateStatus(client);
     return `${this.getPlayerOrThrow(targetId).displayName} 님에게 투표했습니다.`;
   }
@@ -600,7 +613,12 @@ export class MafiaGame {
       throw new Error("협박당한 플레이어는 찬반 투표도 할 수 없습니다.");
     }
 
+    if (this.trialVotes.has(player.userId)) {
+      throw new Error("이미 찬반 투표를 제출했습니다.");
+    }
+
     this.trialVotes.set(player.userId, vote);
+    this.appendPublicActivityLog(vote === "yes" ? "누군가가 찬성에 투표했습니다." : "누군가가 반대에 투표했습니다.");
     await this.sendOrUpdateStatus(client);
     return vote === "yes" ? "처형 찬성에 투표했습니다." : "처형 반대에 투표했습니다.";
   }
@@ -630,6 +648,11 @@ export class MafiaGame {
     player.timeAdjustUsedOnDay = this.dayNumber;
     this.phaseContext.deadlineAt = Math.max(Date.now() + 5_000, this.phaseContext.deadlineAt + delta);
     this.restartTimer(client, this.phaseContext.deadlineAt - Date.now(), () => this.finishDiscussion(client));
+    this.appendPublicActivityLog(
+      direction === "add"
+        ? `${player.displayName} 님이 토론 시간을 15초 늘렸습니다.`
+        : `${player.displayName} 님이 토론 시간을 15초 줄였습니다.`,
+    );
     await this.sendOrUpdateStatus(client);
     return direction === "add" ? "토론 시간을 15초 늘렸습니다." : "토론 시간을 15초 줄였습니다.";
   }
@@ -824,12 +847,11 @@ export class MafiaGame {
     this.blockedTonightTargetId = this.pendingSeductionTargetId;
     this.pendingSeductionTargetId = null;
     this.phaseContext = this.newPhaseContext(NIGHT_SECONDS * 1_000);
-    this.setPublicLines([
-      `${this.nightNumber}번째 밤이 시작되었습니다.`,
-      this.blockedTonightTargetId
-        ? `${this.getPlayerOrThrow(this.blockedTonightTargetId).displayName} 님은 오늘 밤 유혹 상태입니다.`
-        : "이번 밤에 유혹 대상은 없습니다.",
-    ]);
+    const lines = ["밤이 되었습니다."];
+    if (this.blockedTonightTargetId) {
+      lines.push(`${this.getPlayerOrThrow(this.blockedTonightTargetId).displayName} 님은 오늘 밤 유혹 상태입니다.`);
+    }
+    this.setPublicLines(lines);
 
     await this.syncSecretChannels(client);
     await this.sendNightPrompts(client);
@@ -881,14 +903,15 @@ export class MafiaGame {
     this.phase = "discussion";
     const duration = Math.max(this.alivePlayers.length, 1) * DISCUSSION_SECONDS_PER_PLAYER * 1_000;
     this.phaseContext = this.newPhaseContext(duration);
-    this.setPublicLines(morningLines);
+    const publicLines = [`${formatDayBreakLabel(this.dayNumber)}이 밝았습니다.`, ...morningLines];
+    this.setPublicLines(publicLines);
 
     await this.syncSecretChannels(client);
     await this.sendPhaseMessage(client, {
       title: `${this.dayNumber}번째 낮`,
       description: "토론 시간입니다. 살아 있는 플레이어는 한 번씩 시간을 늘리거나 줄일 수 있습니다.",
       components: this.deliveryMode === "web" ? [] : [this.buildTimeControls()],
-      extraLines: morningLines,
+      extraLines: publicLines,
     });
     await this.sendReporterPublishPrompt(client);
     await this.sendOrUpdateStatus(client);
@@ -905,6 +928,9 @@ export class MafiaGame {
     this.phase = "vote";
     this.phaseContext = this.newPhaseContext(VOTE_SECONDS * 1_000);
     this.dayVotes.clear();
+    for (const player of this.players.values()) {
+      player.voteLockedToday = false;
+    }
     this.setPublicLines(["투표 시간입니다."]);
 
     await this.sendVotePrompt(client);
@@ -2421,6 +2447,10 @@ function resolveMemberDisplayName(member: GuildMember): string {
   }
 
   return member.id;
+}
+
+function formatDayBreakLabel(dayNumber: number): string {
+  return DAY_BREAK_LABELS[dayNumber] ?? `${dayNumber}번째 날`;
 }
 
 function shuffle<T>(items: T[]): T[] {

@@ -502,6 +502,9 @@ function setPhaseSnapshot(
   game.bulliedToday = new Set(input.bulliedIds ?? []);
   game.pendingArticle = input.pendingArticle ?? null;
   game.lastPublicLines = [...input.publicLines];
+  for (const line of input.publicLines) {
+    appendSystemChat(game, "public", line);
+  }
 
   if (input.phase === "ended") {
     game.phaseContext = null;
@@ -543,6 +546,18 @@ function appendChat(game: InternalGame, channel: WebChatChannel, authorId: strin
     kind: "player",
     authorId,
     authorName: author.displayName,
+    content,
+    createdAt: Date.now(),
+  });
+}
+
+function appendSystemChat(game: InternalGame, channel: WebChatChannel, content: string): void {
+  game.webChats[channel].push({
+    id: makeId(),
+    channel,
+    kind: "system",
+    authorId: "system",
+    authorName: "시스템",
     content,
     createdAt: Date.now(),
   });

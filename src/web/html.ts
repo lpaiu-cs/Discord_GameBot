@@ -207,11 +207,11 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       .chat-list {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 7px;
         height: 100%;
         max-height: none;
         overflow: auto;
-        padding: 4px 2px 2px;
+        padding: 2px 2px 1px;
       }
 
       .viewer-card,
@@ -393,14 +393,14 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       .chat-shell {
         display: grid;
         grid-template-rows: minmax(0, 1fr) auto;
-        gap: 12px;
+        gap: 9px;
         height: 420px;
       }
 
       .chat-row {
         display: flex;
         align-items: flex-end;
-        gap: 9px;
+        gap: 7px;
       }
 
       .chat-row--mine {
@@ -409,6 +409,10 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
 
       .chat-row--system {
         justify-content: center;
+      }
+
+      .chat-row--continued {
+        margin-top: -3px;
       }
 
       .chat-avatar {
@@ -426,9 +430,13 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         font-weight: 800;
       }
 
+      .chat-avatar--ghost {
+        visibility: hidden;
+      }
+
       .chat-stack {
         display: grid;
-        gap: 4px;
+        gap: 2px;
         max-width: min(78%, 480px);
       }
 
@@ -436,19 +444,29 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         justify-items: end;
       }
 
-      .chat-author {
-        font-size: 0.75rem;
-        line-height: 1.2;
+      .chat-head {
+        display: flex;
+        align-items: baseline;
+        gap: 6px;
         padding: 0 2px;
       }
 
+      .chat-stack--mine .chat-head {
+        justify-content: flex-end;
+      }
+
+      .chat-author {
+        font-size: 0.75rem;
+        line-height: 1.2;
+      }
+
       .chat-bubble {
-        padding: 11px 13px;
+        padding: 9px 12px;
         border: 1px solid rgba(255, 255, 255, 0.06);
         border-radius: 19px;
         background: rgba(255, 255, 255, 0.07);
         color: var(--text);
-        line-height: 1.45;
+        line-height: 1.38;
         word-break: break-word;
         box-shadow: 0 10px 26px rgba(0, 0, 0, 0.16);
       }
@@ -465,14 +483,14 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       }
 
       .chat-bubble--system {
-        max-width: min(92%, 520px);
-        padding: 8px 12px;
-        border-color: rgba(255, 255, 255, 0.08);
-        border-radius: 999px;
-        background: rgba(255, 255, 255, 0.07);
-        color: #d4deed;
-        font-size: 0.78rem;
-        line-height: 1.35;
+        max-width: min(88%, 540px);
+        padding: 2px 8px;
+        border: 0;
+        border-radius: 0;
+        background: transparent;
+        color: #aeb8c8;
+        font-size: 0.74rem;
+        line-height: 1.45;
         text-align: center;
         box-shadow: none;
       }
@@ -485,9 +503,9 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       }
 
       .chat-meta {
-        padding: 0 2px;
         font-size: 0.72rem;
         line-height: 1.2;
+        opacity: 0.9;
       }
 
       .action-form,
@@ -804,7 +822,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         { id: "public", label: "공개" },
         { id: "actions", label: "행동" },
         { id: "secret", label: "비밀" },
-        { id: "logs", label: "로그" },
+        { id: "logs", label: "개인" },
       ];
       let currentState = initialState;
       let sinceVersion = initialState.version;
@@ -1126,7 +1144,19 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         return trimmed ? trimmed.slice(0, 1) : "?";
       }
 
-      function chatMessage(state, viewerId, message) {
+      function shouldContinueChat(previousMessage, message) {
+        if (!previousMessage || previousMessage.kind !== "player" || message.kind !== "player") {
+          return false;
+        }
+
+        if (previousMessage.authorId !== message.authorId) {
+          return false;
+        }
+
+        return Math.abs(message.createdAt - previousMessage.createdAt) <= 10000;
+      }
+
+      function chatMessage(state, viewerId, message, previousMessage) {
         if (message.kind === "system") {
           return \`
             <div class="chat-row chat-row--system" data-message-id="\${escapeHtml(message.id)}">
@@ -1136,19 +1166,33 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         }
 
         const mine = message.authorId === viewerId;
-        const rowClass = mine ? "chat-row chat-row--mine" : "chat-row";
+        const continued = shouldContinueChat(previousMessage, message);
+        const rowClass = [mine ? "chat-row chat-row--mine" : "chat-row", continued ? "chat-row--continued" : ""]
+          .filter(Boolean)
+          .join(" ");
         const stackClass = mine ? "chat-stack chat-stack--mine" : "chat-stack";
         const bubbleClass = mine ? "chat-bubble chat-bubble--mine" : "chat-bubble chat-bubble--other";
         const nickClass = nicknameClassForUser(state, message.authorId);
-        const avatar = mine ? "" : \`<div class="chat-avatar \${nickClass}">\${escapeHtml(authorInitial(message.authorName))}</div>\`;
+        const avatar = mine
+          ? ""
+          : continued
+            ? '<div class="chat-avatar chat-avatar--ghost"></div>'
+            : \`<div class="chat-avatar \${nickClass}">\${escapeHtml(authorInitial(message.authorName))}</div>\`;
+        const head = continued
+          ? ""
+          : \`
+              <div class="chat-head">
+                <div class="chat-author \${nickClass}">\${escapeHtml(displayAuthorName(viewerId, message))}</div>
+                <div class="chat-meta">\${formatClock(message.createdAt)}</div>
+              </div>
+            \`;
 
         return \`
           <div class="\${rowClass}" data-message-id="\${escapeHtml(message.id)}">
             \${avatar}
             <div class="\${stackClass}">
-              <div class="chat-author \${nickClass}">\${escapeHtml(displayAuthorName(viewerId, message))}</div>
+              \${head}
               <div class="\${bubbleClass}">\${escapeHtml(message.content)}</div>
-              <div class="chat-meta">\${formatClock(message.createdAt)}</div>
             </div>
           </div>
         \`;
@@ -1158,7 +1202,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         const messages =
           chat.messages.length > 0
             ? chat.messages
-                .map((message) => chatMessage(state, viewerId, message))
+                .map((message, index) => chatMessage(state, viewerId, message, index > 0 ? chat.messages[index - 1] : null))
                 .join("")
             : '<div class="line-item muted">아직 메시지가 없습니다.</div>';
 
@@ -1269,12 +1313,6 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         const team = teamClass(state);
         const notices = state.actions.notices.map((notice) => \`<div class="notice">\${escapeHtml(notice)}</div>\`).join("");
         const controls = state.actions.controls.map(actionControl).join("");
-        const publicLines =
-          state.publicLines.length > 0
-            ? state.publicLines
-                .map((line) => \`<div class="line-item"><strong>공개 결과</strong><div>\${escapeHtml(line)}</div></div>\`)
-                .join("")
-            : '<div class="line-item muted">최근 공개 결과가 없습니다.</div>';
         const privateLines =
           state.systemLog.privateLines.length > 0
             ? state.systemLog.privateLines
@@ -1365,14 +1403,11 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
             <section class="\${sectionClass("logs")} span-12" data-section="logs">
               <div class="panel-head">
                 <div>
-                  <h2>시스템 로그 / 결과</h2>
+                  <h2>개인 기록</h2>
                 </div>
               </div>
               <div class="panel-body">
-                <div class="split-list">
-                  <div class="line-list">\${publicLines}</div>
-                  <div class="line-list">\${privateLines}</div>
-                </div>
+                <div class="line-list">\${privateLines}</div>
               </div>
             </section>
           </div>

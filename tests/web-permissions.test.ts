@@ -130,6 +130,46 @@ test("찬반 투표 패널에는 현재 대상 이름이 포함된다", () => {
   assert.match(control.description, /민재 님을 처형할지 선택합니다/);
 });
 
+test("낮 투표를 제출한 뒤에는 대시보드에서 재선택할 수 없다", () => {
+  const game = createTestGame();
+  seedPlayers(game, [
+    { userId: "mafia", role: "mafia", displayName: "루나" },
+    { userId: "citizen", role: "citizen", displayName: "민재" },
+  ]);
+
+  game.phase = "vote";
+  game.phaseContext = { token: 4, startedAt: Date.now(), deadlineAt: Date.now() + 10_000 };
+  game.dayVotes.set("mafia", "citizen");
+  game.getPlayerOrThrow("mafia").voteLockedToday = true;
+
+  const state = buildDashboardState(game, "mafia").state!;
+
+  assert.equal(state.actions.controls.some((control) => control.actionType === "vote"), false);
+  const submitted = state.actions.controls.find((control) => control.actionType === "vote_submitted");
+  assert.ok(submitted);
+  assert.match(submitted.description, /민재 님에게 투표를 제출했습니다/);
+});
+
+test("찬반 투표를 제출한 뒤에는 대시보드에서 재선택할 수 없다", () => {
+  const game = createTestGame();
+  seedPlayers(game, [
+    { userId: "mafia", role: "mafia", displayName: "루나" },
+    { userId: "citizen", role: "citizen", displayName: "민재" },
+  ]);
+
+  game.phase = "trial";
+  game.currentTrialTargetId = "citizen";
+  game.phaseContext = { token: 5, startedAt: Date.now(), deadlineAt: Date.now() + 10_000 };
+  game.trialVotes.set("mafia", "yes");
+
+  const state = buildDashboardState(game, "mafia").state!;
+
+  assert.equal(state.actions.controls.some((control) => control.actionType === "trial_vote"), false);
+  const submitted = state.actions.controls.find((control) => control.actionType === "trial_vote_submitted");
+  assert.ok(submitted);
+  assert.match(submitted.description, /처형 찬성에 투표를 제출했습니다/);
+});
+
 test("상태 패널 좌석은 참가 순서와 닉네임을 유지하고 빈 자리를 채운다", () => {
   const game = createTestGame();
   seedPlayers(game, [
