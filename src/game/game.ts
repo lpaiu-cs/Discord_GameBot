@@ -2279,7 +2279,7 @@ export function createGame(manager: GameManager, interaction: ChatInputCommandIn
 function createPlayer(member: GuildMember): PlayerState {
   return {
     userId: member.id,
-    displayName: member.displayName,
+    displayName: resolveMemberDisplayName(member),
     role: "citizen",
     originalRole: "citizen",
     alive: true,
@@ -2294,6 +2294,25 @@ function createPlayer(member: GuildMember): PlayerState {
     voteLockedToday: false,
     timeAdjustUsedOnDay: null,
   };
+}
+
+function resolveMemberDisplayName(member: GuildMember): string {
+  const nickname = typeof member.nickname === "string" ? member.nickname.trim() : "";
+  if (nickname.length > 0) {
+    return nickname;
+  }
+
+  const displayName = typeof member.displayName === "string" ? member.displayName.trim() : "";
+  if (displayName.length > 0) {
+    return displayName;
+  }
+
+  const username = typeof member.user?.username === "string" ? member.user.username.trim() : "";
+  if (username.length > 0) {
+    return username;
+  }
+
+  return member.id;
 }
 
 function shuffle<T>(items: T[]): T[] {

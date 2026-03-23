@@ -78,6 +78,16 @@ export interface DashboardStatePayload {
     nightNumber: number;
     deadlineAt: number | null;
     currentTrialTargetName: string | null;
+    seats: Array<{
+      seat: number;
+      userId: string | null;
+      displayName: string | null;
+      alive: boolean;
+      bullied: boolean;
+      ascended: boolean;
+      isViewer: boolean;
+      empty: boolean;
+    }>;
     alivePlayers: Array<{ userId: string; displayName: string; bullied: boolean }>;
     deadPlayers: Array<{ userId: string; displayName: string; ascended: boolean }>;
   };
@@ -112,6 +122,7 @@ export function buildDashboardState(
   }
 
   const player = game.getPlayerOrThrow(userId);
+  const orderedPlayers = [...game.players.values()];
   const state: DashboardStatePayload = {
     version: game.stateVersion,
     viewer: {
@@ -135,6 +146,32 @@ export function buildDashboardState(
       nightNumber: game.nightNumber,
       deadlineAt: game.phaseContext?.deadlineAt ?? null,
       currentTrialTargetName: game.currentTrialTargetId ? game.getPlayer(game.currentTrialTargetId)?.displayName ?? null : null,
+      seats: Array.from({ length: 8 }, (_, index) => {
+        const seatPlayer = orderedPlayers[index];
+        if (!seatPlayer) {
+          return {
+            seat: index + 1,
+            userId: null,
+            displayName: null,
+            alive: false,
+            bullied: false,
+            ascended: false,
+            isViewer: false,
+            empty: true,
+          };
+        }
+
+        return {
+          seat: index + 1,
+          userId: seatPlayer.userId,
+          displayName: seatPlayer.displayName,
+          alive: seatPlayer.alive,
+          bullied: game.bulliedToday.has(seatPlayer.userId),
+          ascended: seatPlayer.ascended,
+          isViewer: seatPlayer.userId === userId,
+          empty: false,
+        };
+      }),
       alivePlayers: game.alivePlayers.map((alivePlayer) => ({
         userId: alivePlayer.userId,
         displayName: alivePlayer.displayName,

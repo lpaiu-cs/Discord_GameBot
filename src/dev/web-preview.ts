@@ -163,20 +163,20 @@ function seedPreviewGame(game: Record<string, any>, role: Role, phase: PreviewPh
 function buildPreviewPlayers(role: Role, phase: PreviewPhase): PlayerState[] {
   const viewerAlive = !(role === "citizen" && phase === "night" && process.env.PREVIEW_DEAD_VIEW === "true");
   const players: PlayerState[] = [
-    makePlayer(PREVIEW_USER_ID, "개발자", role, viewerAlive),
-    makePlayer("npc-citizen", "시민A", "citizen", true),
-    makePlayer("npc-doctor", "의사A", "doctor", true),
-    makePlayer("npc-spy", "보조", "spy", true, true),
-    makePlayer("dead-citizen", "망자", "citizen", false),
+    makePlayer(PREVIEW_USER_ID, "민우", role, viewerAlive),
+    makePlayer("npc-citizen", "하린지수", "citizen", true),
+    makePlayer("npc-doctor", "서준도윤하린별", "doctor", true),
+    makePlayer("npc-spy", "하린지수민호도윤서아예나", "spy", true, true),
+    makePlayer("dead-citizen", "사망닉네임예시", "citizen", false),
   ];
 
   if (role === "lover") {
     players[0].loverId = "npc-lover";
-    players.push(makePlayer("npc-lover", "연인 상대", "lover", true, false, PREVIEW_USER_ID));
+    players.push(makePlayer("npc-lover", "연인테스트이름", "lover", true, false, PREVIEW_USER_ID));
   }
 
   if (role !== "lover") {
-    players.push(makePlayer("npc-thug", "건달A", "thug", true));
+    players.push(makePlayer("npc-thug", "도윤서아", "thug", true));
   }
 
   if (role === "medium") {
@@ -184,7 +184,7 @@ function buildPreviewPlayers(role: Role, phase: PreviewPhase): PlayerState[] {
   }
 
   if (phase === "night" && !players.some((player) => !player.alive)) {
-    players.push(makePlayer("dead-extra", "추가 망자", "citizen", false));
+    players.push(makePlayer("dead-extra", "열두글자테스트닉네임", "citizen", false));
   }
 
   return players;

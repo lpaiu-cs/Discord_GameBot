@@ -111,3 +111,32 @@ test("행동 패널은 단계에 맞는 행동만 노출한다", () => {
   assert.equal(state.actions.controls.some((control) => control.actionType === "vote"), true);
   assert.equal(state.actions.controls.some((control) => control.actionType === "night_select"), false);
 });
+
+test("상태 패널 좌석은 참가 순서와 닉네임을 유지하고 빈 자리를 채운다", () => {
+  const game = createTestGame();
+  seedPlayers(game, [
+    { userId: "u1", role: "mafia", displayName: "루나" },
+    { userId: "u2", role: "doctor", displayName: "민재", alive: false },
+    { userId: "u3", role: "citizen", displayName: "서아" },
+  ]);
+
+  const state = buildDashboardState(game, "u1").state!;
+
+  assert.equal(state.room.seats.length, 8);
+  assert.deepEqual(
+    state.room.seats.slice(0, 3).map((seat) => ({
+      seat: seat.seat,
+      displayName: seat.displayName,
+      alive: seat.alive,
+      isViewer: seat.isViewer,
+      empty: seat.empty,
+    })),
+    [
+      { seat: 1, displayName: "루나", alive: true, isViewer: true, empty: false },
+      { seat: 2, displayName: "민재", alive: false, isViewer: false, empty: false },
+      { seat: 3, displayName: "서아", alive: true, isViewer: false, empty: false },
+    ],
+  );
+  assert.equal(state.room.seats[7].empty, true);
+  assert.equal(state.room.seats[7].displayName, null);
+});
