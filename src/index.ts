@@ -12,7 +12,7 @@ import {
   StringSelectMenuInteraction,
 } from "discord.js";
 import { config } from "./config";
-import { buildDashboardReply } from "./discord/dashboard";
+import { buildDashboardReply, buildDashboardWaitingReply } from "./discord/dashboard";
 import { mafiaCommand, registerCommands } from "./discord/commands";
 import { GameManager, MafiaGame, createGame } from "./game/game";
 import { Ruleset } from "./game/model";
@@ -122,7 +122,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       const member = await interaction.guild!.members.fetch(interaction.user.id);
       game.addPlayer(member);
       await game.sendOrUpdateLobby(client);
-      await replyWithDashboardLink(interaction, game);
+      await replyWithDashboardEntry(interaction, game);
       return;
     }
     case "leave": {
@@ -162,7 +162,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
         throw new Error("현재 게임 참가자만 웹 대시보드 링크를 발급받을 수 있습니다.");
       }
 
-      await replyWithDashboardLink(interaction, game);
+      await replyWithDashboardEntry(interaction, game);
       return;
     }
     case "status": {
@@ -234,12 +234,12 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     return;
   }
 
-  if (kind === "dashboard" && tokenOrAction === "refresh") {
+  if (kind === "dashboard" && (tokenOrAction === "refresh" || tokenOrAction === "open")) {
     if (!game.hasParticipant(interaction.user.id)) {
       throw new Error("현재 게임 참가자만 새 링크를 발급받을 수 있습니다.");
     }
 
-    await replyWithDashboardLink(interaction, game);
+    await replyWithDashboardEntry(interaction, game, tokenOrAction);
     return;
   }
 
@@ -315,6 +315,26 @@ async function replyWithDashboardLink(
   await sendEphemeralReply(interaction, payload);
 }
 
+async function replyWithDashboardEntry(
+  interaction: ChatInputCommandInteraction | ButtonInteraction,
+  game: MafiaGame,
+  trigger: "open" | "refresh" | "join" | "command" = "command",
+): Promise<void> {
+  if (game.phase === "lobby") {
+    await deferEphemeral(interaction);
+    const note =
+      trigger === "open"
+        ? "아직 게임이 시작되지 않았습니다. 시작 후 같은 메시지에서 다시 누르세요."
+        : trigger === "join"
+          ? "이 메시지를 열어 둔 뒤 게임이 시작되면 바로 입장하세요."
+          : "현재는 로비 단계입니다. 게임 시작 후 입장 링크를 받을 수 있습니다.";
+    await sendEphemeralReply(interaction, buildDashboardWaitingReply(game.id, { note }));
+    return;
+  }
+
+  await replyWithDashboardLink(interaction, game);
+}
+
 async function handleLobbyButton(
   interaction: ButtonInteraction,
   gameId: string,
@@ -336,7 +356,7 @@ async function handleLobbyButton(
   if (action === "join") {
     game.addPlayer(member);
     await game.sendOrUpdateLobby(client);
-    await replyWithDashboardLink(interaction, game);
+    await replyWithDashboardEntry(interaction, game, "join");
     return;
   }
 

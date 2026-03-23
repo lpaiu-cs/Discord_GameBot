@@ -61,6 +61,7 @@ const PHASE_LABELS: Record<Phase, string> = {
 };
 
 const NIGHT_SECONDS = 25;
+const FIRST_NIGHT_EXTRA_SECONDS = 15;
 const DISCUSSION_SECONDS_PER_PLAYER = 15;
 const VOTE_SECONDS = 15;
 const DEFENSE_SECONDS = 15;
@@ -846,7 +847,8 @@ export class MafiaGame {
     this.spyBonusGrantedTonight.clear();
     this.blockedTonightTargetId = this.pendingSeductionTargetId;
     this.pendingSeductionTargetId = null;
-    this.phaseContext = this.newPhaseContext(NIGHT_SECONDS * 1_000);
+    const nightDurationMs = this.nightNumber === 1 ? (NIGHT_SECONDS + FIRST_NIGHT_EXTRA_SECONDS) * 1_000 : NIGHT_SECONDS * 1_000;
+    this.phaseContext = this.newPhaseContext(nightDurationMs);
     const lines = ["밤이 되었습니다."];
     if (this.blockedTonightTargetId) {
       lines.push(`${this.getPlayerOrThrow(this.blockedTonightTargetId).displayName} 님은 오늘 밤 유혹 상태입니다.`);
@@ -863,7 +865,7 @@ export class MafiaGame {
           : "개인 DM으로 행동을 제출해 주세요. 공개 채널에서는 결과만 안내합니다.",
     });
     await this.sendOrUpdateStatus(client);
-    this.restartTimer(client, NIGHT_SECONDS * 1_000, () => this.finishNight(client));
+    this.restartTimer(client, nightDurationMs, () => this.finishNight(client));
   }
 
   private async finishNight(client: Client): Promise<void> {

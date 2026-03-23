@@ -394,6 +394,28 @@ test("밤 시작 공개 로그는 간결한 시스템 메시지로 공개 채팅
   assert.ok(publicSystemLines.includes("민재 님은 오늘 밤 유혹 상태입니다."));
 });
 
+test("첫 번째 밤은 접속 여유를 위해 15초가 추가된다", async () => {
+  const game = createTestGame("balance");
+  seedPlayers(game, [
+    { userId: "mafia", displayName: "루나", role: "mafia" },
+    { userId: "citizen", displayName: "민재", role: "citizen" },
+  ]);
+  game["syncSecretChannels"] = async () => undefined;
+  game["sendNightPrompts"] = async () => undefined;
+  game["sendPhaseMessage"] = async () => undefined;
+  game["sendOrUpdateStatus"] = async () => undefined;
+  game["restartTimer"] = () => undefined;
+
+  await game["beginNight"]({} as Client);
+  const firstNightDuration = game.phaseContext!.deadlineAt - game.phaseContext!.startedAt;
+
+  await game["beginNight"]({} as Client);
+  const secondNightDuration = game.phaseContext!.deadlineAt - game.phaseContext!.startedAt;
+
+  assert.equal(firstNightDuration, 40_000);
+  assert.equal(secondNightDuration, 25_000);
+});
+
 test("낮 시작 공개 로그는 몇 번째 날인지와 밤 결과를 함께 공개 채팅에 남긴다", async () => {
   const game = createTestGame("balance");
   seedPlayers(game, [
