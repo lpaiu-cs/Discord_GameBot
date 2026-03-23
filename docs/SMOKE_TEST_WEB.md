@@ -47,6 +47,46 @@ npm run dev:preview
 - 실제 다인원 상호작용 결과
 - 실제 quick tunnel 네트워크 경로
 
+## 1인 개발자 연습 시뮬레이션
+
+실제 게임처럼 몇 초 간격으로 NPC 가 움직이는 예시를 보려면:
+
+```bash
+npm run dev:practice1
+```
+
+시나리오별 실행:
+
+- `practice1`: 마피아 시점, 밤 마피아 채팅 확인
+- `practice2`: 정치인 시점, 비밀 채팅 비노출 확인
+- `practice3`: 영매 시점, 밤 망자 채팅 확인
+- `practice4`: 사망자 시점, 망자 채팅 read/write 확인
+
+```bash
+npm run dev:practice2
+npm run dev:practice3
+npm run dev:practice4
+```
+
+모든 시나리오를 동시에 띄우려면:
+
+```bash
+npm run dev:practice:all
+```
+
+이 경로로 확인할 수 있는 것:
+
+- 같은 브라우저에서 여러 게임 세션 동시 유지
+- phase 자동 전환 polling 반영
+- 공개/비밀 채팅 가시성 변화
+- 사망/생존에 따른 채팅 write 권한 변화
+- 둘째 날까지의 간단한 시뮬레이션 흐름
+
+이 경로의 제한:
+
+- 엔진 승패 계산 전체를 자동으로 재현하지는 않음
+- NPC 행동은 scripted timeline 이고, 사용자의 실제 입력 결과를 다시 계산해서 branching 하지는 않음
+
 ### 준비
 
 1. `.env` 설정

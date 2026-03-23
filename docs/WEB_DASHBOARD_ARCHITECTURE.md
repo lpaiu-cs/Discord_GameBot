@@ -53,6 +53,9 @@ Discord는 로비/모집/참가/재입장 링크 발급만 담당하고, 실제 
 
 - 세션은 서버 메모리 저장소 기준으로 관리한다.
 - 쿠키에는 signed session id 만 들어간다.
+- 쿠키 이름은 `gameId` 별로 분리한다.
+  - 예: `mafia_session_<gameId>`
+  - 따라서 같은 브라우저에서 서로 다른 게임 탭을 동시에 유지할 수 있다.
 - 세션 식별 기준
   - `gameId`
   - `discordUserId`

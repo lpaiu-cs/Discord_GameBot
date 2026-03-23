@@ -131,12 +131,47 @@ npm run dev:preview
 
 이 프리뷰는 실제 Discord 로비 흐름을 대체하지 않고, UI 와 세션/입장 흐름을 로컬에서 빠르게 점검하는 용도다.
 
+## 개발자용 연습 시뮬레이션
+
+UI 만 보는 대신, 자동 진행되는 연습 시나리오를 하나씩 띄우려면:
+
+```bash
+npm run dev:practice
+```
+
+기본값은 `practice1` 이고 `http://localhost:3014` 에서 동작한다. 시나리오별 스크립트:
+
+- `practice1`: 내가 `마피아`로 시작하고 밤 마피아 채팅과 낮 공개 채팅을 본다
+- `practice2`: 내가 `정치인`으로 시작하고 보면 안 되는 비밀 채팅이 숨겨지는지 본다
+- `practice3`: 내가 `영매`로 시작하고 밤 망자 채팅이 보이는지 본다
+- `practice4`: 내가 이미 죽은 상태로 시작하고 망자 채팅 read/write 를 본다
+
+```bash
+npm run dev:practice1
+npm run dev:practice2
+npm run dev:practice3
+npm run dev:practice4
+```
+
+모든 연습 시나리오는 대략 `두 번의 낮`까지 자동 진행된다. 사용자는 그 사이 직접 채팅을 보내고, 현재 phase 에 허용된 행동도 제출할 수 있다. 예전처럼 4개를 한 번에 띄우려면 `npm run dev:practice:all` 을 쓰면 된다.
+
+PowerShell 예시:
+
+```powershell
+$env:DEV_PRACTICE_PORT='3015'
+$env:PRACTICE_RULESET='balance'
+npm run dev:practice3
+```
+
+`dev:practice:all` 은 게임별 세션 쿠키를 따로 쓰므로, `practice1~4` 를 같은 브라우저에서 동시에 열어도 유지된다.
+
 ## 주요 문서
 
 - `RULE.md`
 - `docs/WEB_DASHBOARD_ARCHITECTURE.md`
 - `docs/SMOKE_TEST_WEB.md`
 - `docs/INGAME_UI_EXAMPLES.md`
+  - 현재 웹 대시보드 인게임 UI 와 모바일 레이아웃 예시
 - `docs/DISCORD_SMOKE_TEST_2026-03-23.md`
 
 ## 운영 메모

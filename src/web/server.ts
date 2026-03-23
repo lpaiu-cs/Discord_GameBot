@@ -21,7 +21,7 @@ export class DashboardServer {
   private readonly stateRateLimit = new RateLimiter(240, 60_000);
   private readonly actionRateLimit = new RateLimiter(120, 60_000);
   private readonly chatRateLimit = new RateLimiter(120, 60_000);
-  private readonly cookieName = "mafia_session";
+  private readonly cookieBaseName = "mafia_session";
 
   constructor(private readonly options: DashboardServerOptions) {
     this.server = createServer((request, response) => {
@@ -127,9 +127,10 @@ export class DashboardServer {
 
       const session = this.options.sessionStore.create(payload.gameId, payload.discordUserId);
       const cookieValue = this.options.sessionStore.serializeCookieValue(session.id);
+      const cookieName = this.cookieNameFor(payload.gameId);
       response.setHeader(
         "Set-Cookie",
-        `${this.cookieName}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+        `${cookieName}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
       );
       response.statusCode = 302;
       response.setHeader("Location", `/game/${encodeURIComponent(payload.gameId)}`);
@@ -244,7 +245,7 @@ export class DashboardServer {
     apiMode: boolean,
   ): WebSession | null {
     const cookies = parseCookies(request.headers.cookie ?? "");
-    const rawCookie = cookies[this.cookieName];
+    const rawCookie = cookies[this.cookieNameFor(gameId)] ?? cookies[this.cookieBaseName];
     if (!rawCookie) {
       this.respondUnauthenticated(response, apiMode);
       return null;
@@ -263,6 +264,11 @@ export class DashboardServer {
     }
 
     return session;
+  }
+
+  private cookieNameFor(gameId: string): string {
+    const safeGameId = gameId.replaceAll(/[^A-Za-z0-9_-]/g, "_");
+    return `${this.cookieBaseName}_${safeGameId}`;
   }
 
   private ensureCsrf(request: IncomingMessage, response: ServerResponse, session: WebSession): boolean {
