@@ -133,11 +133,11 @@ export function getRoleSummary(role: Role, ruleset: Ruleset): string {
     case "mafia":
       return "밤마다 한 명을 처형 대상으로 고릅니다. 다른 마피아와 밤 대화를 할 수 있습니다.";
     case "spy":
-      return "밤마다 한 명의 직업을 확인합니다. 마피아를 조사하면 접선합니다.";
+      return "밤마다 한 명의 직업을 확인합니다. 마피아를 맞히면 즉시 접선하고 같은 밤에 한 번 더 조사할 수 있습니다.";
     case "beastman":
       return ruleset === "balance"
-        ? "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 마피아에게 죽으면 접선합니다. 회피 발동 시 즉시 접선합니다."
-        : "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 마피아에게 죽으면 접선합니다.";
+        ? "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 실제로 마피아에게 죽으면 접선합니다. 회피가 발동하면 즉시 접선합니다. 접선 후 다른 마피아팀 생존자가 없으면 혼자 대상을 처형할 수 있고, 이 공격은 의사/군인/연인 효과를 무시합니다."
+        : "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 실제로 마피아에게 죽으면 접선합니다. 접선 후 다른 마피아팀 생존자가 없으면 혼자 대상을 처형할 수 있고, 이 공격은 의사/군인/연인 효과를 무시합니다.";
     case "madam":
       return ruleset === "balance"
         ? "투표 시간에 한 명을 유혹해 그날 밤 효과를 막습니다. 전 직업에 적용됩니다."
@@ -147,11 +147,11 @@ export function getRoleSummary(role: Role, ruleset: Ruleset): string {
     case "doctor":
       return "밤마다 한 명을 치료합니다. 시즌4 기준 자기 자신도 치료할 수 있습니다.";
     case "soldier":
-      return "마피아 공격을 한 번 버팁니다. 스파이에게 조사당하면 그 사실을 압니다.";
+      return "마피아 공격을 한 번 버팁니다. 스파이에게 조사당하면 스파이의 정체를 알고 조사 결과를 막습니다.";
     case "politician":
       return "투표 표가 2표로 계산되며 투표 처형되지 않습니다.";
     case "medium":
-      return "죽은 사람의 채팅을 보고 밤마다 죽은 플레이어 한 명을 성불시킵니다.";
+      return "죽은 사람의 채팅을 보고, 밤마다 생존자나 망자 한 명을 미리 골라 밤 종료 시 그 대상이 죽어 있으면 성불시키고 직업을 확인합니다.";
     case "lover":
       return "연인과 밤에 대화할 수 있습니다. 한 명이 마피아에게 지목되면 다른 연인이 대신 죽습니다.";
     case "thug":
@@ -165,7 +165,7 @@ export function getRoleSummary(role: Role, ruleset: Ruleset): string {
     case "terrorist":
       return "밤에 표시한 상대에게 실제로 마피아에게 살해당하면 함께 죽습니다. 투표 처형 시 적을 지목해 산화할 수 있습니다.";
     case "priest":
-      return "한 번만 죽은 플레이어 한 명을 부활시킵니다.";
+      return "한 번만 생존자 한 명을 미리 지정합니다. 그 플레이어가 이번 밤에 죽으면 부활시킵니다.";
     case "citizen":
       return "특수 능력이 없는 시민입니다.";
     case "evil":

@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { Client, Guild, GuildMember, StringSelectMenuInteraction } from "discord.js";
 import { MafiaGame } from "../src/game/game";
 import { PhaseContext, PlayerState, Role, Ruleset } from "../src/game/model";
+import { getRoleSummary } from "../src/game/rules";
 
 type InternalGame = MafiaGame & Record<string, any>;
 
@@ -84,6 +85,17 @@ async function resolveNight(game: InternalGame) {
   const summary = await game["resolveNight"]({} as Client);
   return { summary, dms };
 }
+
+test("역할 카드 설명은 현재 엔진 동작과 맞아야 한다", () => {
+  assert.match(getRoleSummary("spy", "balance"), /같은 밤에 한 번 더 조사/);
+  assert.match(getRoleSummary("beastman", "balance"), /다른 마피아팀 생존자가 없으면/);
+  assert.match(getRoleSummary("beastman", "balance"), /의사\/군인\/연인 효과를 무시/);
+  assert.match(getRoleSummary("soldier", "balance"), /스파이의 정체를 알고 조사 결과를 막습니다/);
+  assert.match(getRoleSummary("medium", "balance"), /생존자나 망자 한 명을 미리 골라/);
+  assert.match(getRoleSummary("medium", "balance"), /밤 종료 시 그 대상이 죽어 있으면 성불/);
+  assert.match(getRoleSummary("priest", "balance"), /생존자 한 명을 미리 지정/);
+  assert.match(getRoleSummary("priest", "balance"), /이번 밤에 죽으면 부활/);
+});
 
 test("승리 조건은 정치인 표 가중치와 무관하게 머릿수로만 계산한다", () => {
   const game = createTestGame("balance");
