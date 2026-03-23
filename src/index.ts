@@ -27,10 +27,9 @@ const client = new Client({
   partials: [Partials.Channel],
 });
 
+const endedGameCleanupTimers = new Map<string, NodeJS.Timeout>();
 const manager = new GameManager((game) => {
-  void publicBaseUrlProvider.stop(game.id).catch((error) => {
-    console.error(`failed to stop public base url provider for ended game ${game.id}`, error);
-  });
+  scheduleEndedGameCleanup(game);
 });
 const joinTicketService = new JoinTicketService(config.joinTicketSecret);
 const sessionStore = new SessionStore(config.webSessionSecret);
@@ -103,6 +102,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       }
 
       if (game?.phase === "ended") {
+        cancelEndedGameCleanup(game.id);
         await publicBaseUrlProvider.stop(game.id);
         manager.delete(interaction.guildId);
       }
@@ -394,4 +394,31 @@ function withEphemeralFlag(payload: InteractionReplyOptions): InteractionReplyOp
 function stripEphemeralFlags(payload: InteractionReplyOptions): InteractionEditReplyOptions {
   const { flags: _flags, ...rest } = payload;
   return rest;
+}
+
+function scheduleEndedGameCleanup(game: MafiaGame): void {
+  cancelEndedGameCleanup(game.id);
+  const timeout = setTimeout(() => {
+    endedGameCleanupTimers.delete(game.id);
+    const current = manager.get(game.guildId);
+    if (!current || current.id !== game.id || current.phase !== "ended") {
+      return;
+    }
+
+    void publicBaseUrlProvider.stop(game.id).catch((error) => {
+      console.error(`failed to stop public base url provider for ended game ${game.id}`, error);
+    });
+    manager.delete(game.guildId);
+  }, config.endedGameRetentionSeconds * 1_000);
+  endedGameCleanupTimers.set(game.id, timeout);
+}
+
+function cancelEndedGameCleanup(gameId: string): void {
+  const existing = endedGameCleanupTimers.get(gameId);
+  if (!existing) {
+    return;
+  }
+
+  clearTimeout(existing);
+  endedGameCleanupTimers.delete(gameId);
 }

@@ -181,6 +181,8 @@ export class MafiaGame {
   bulliedNextDay = new Set<string>();
   pendingArticle: PendingArticle | null = null;
   lastPublicLines: string[] = ["게임이 생성되었습니다."];
+  endedWinner: string | null = null;
+  endedReason: string | null = null;
   lobbyMessageId: string | null = null;
   statusMessageId: string | null = null;
   phaseMessageId: string | null = null;
@@ -475,6 +477,8 @@ export class MafiaGame {
     });
 
     this.assignLovers();
+    this.endedWinner = null;
+    this.endedReason = null;
     await this.prepareSecretChannels(client);
     await this.sendRoleCards(client);
 
@@ -510,6 +514,8 @@ export class MafiaGame {
     this.clearTimer();
     this.phase = "ended";
     this.phaseContext = null;
+    this.endedWinner = null;
+    this.endedReason = reason;
     this.setPublicLines([reason]);
     await this.sendOrUpdateStatus(client);
     await this.lockOrDeleteSecretChannels(client);
@@ -853,6 +859,8 @@ export class MafiaGame {
     if (winner) {
       this.phase = "ended";
       this.phaseContext = null;
+      this.endedWinner = winner;
+      this.endedReason = `${winner} 승리`;
       this.appendPublicLine(`${winner} 승리`);
       await this.sendPhaseMessage(client, {
         title: "게임 종료",
@@ -1043,6 +1051,8 @@ export class MafiaGame {
     if (winner) {
       this.phase = "ended";
       this.phaseContext = null;
+      this.endedWinner = winner;
+      this.endedReason = `${winner} 승리`;
       this.appendPublicLine(`${winner} 승리`);
       await this.sendPhaseMessage(client, {
         title: "게임 종료",

@@ -93,5 +93,6 @@ export const config = {
   quickTunnelEnabled: readBoolean("QUICK_TUNNEL_ENABLED", false),
   webPort: readInteger("WEB_PORT", 3000),
   joinTicketTtlSeconds: readInteger("JOIN_TICKET_TTL_SECONDS", 180),
+  endedGameRetentionSeconds: readInteger("ENDED_GAME_RETENTION_SECONDS", 900),
   gameDeliveryMode: readDeliveryMode(),
 };

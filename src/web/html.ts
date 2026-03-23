@@ -212,7 +212,6 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         max-height: none;
         overflow: auto;
         padding: 4px 2px 2px;
-        scroll-behavior: smooth;
       }
 
       .viewer-card,
@@ -615,11 +614,14 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         border-radius: 16px;
         background: transparent;
         color: var(--muted);
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
       }
 
       .dock-button strong {
         display: block;
         font-size: 0.8rem;
+        pointer-events: none;
       }
 
       .dock-badge {
@@ -633,6 +635,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         color: var(--text);
         font-size: 0.72rem;
         line-height: 1.2;
+        pointer-events: none;
       }
 
       .dock-button.is-active {
@@ -646,6 +649,62 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       .span-7 { grid-column: span 7; }
       .span-8 { grid-column: span 8; }
       .span-12 { grid-column: span 12; }
+
+      .endgame-card {
+        border-width: 1px;
+      }
+
+      .endgame-card--win {
+        border-color: rgba(117, 209, 162, 0.28);
+        background: rgba(117, 209, 162, 0.12);
+      }
+
+      .endgame-card--lose {
+        border-color: rgba(255, 113, 113, 0.26);
+        background: rgba(255, 113, 113, 0.12);
+      }
+
+      .reveal-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 10px;
+      }
+
+      .reveal-card {
+        padding: 12px 13px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 16px;
+        background: rgba(255, 255, 255, 0.04);
+      }
+
+      .reveal-card--mafia {
+        border-color: var(--mafia-border);
+        background: rgba(255, 115, 115, 0.1);
+      }
+
+      .reveal-card--citizen {
+        border-color: var(--citizen-border);
+        background: rgba(115, 160, 255, 0.08);
+      }
+
+      .reveal-name {
+        margin: 0 0 6px;
+        font-size: 0.95rem;
+        font-weight: 800;
+      }
+
+      .reveal-role {
+        color: var(--text);
+        font-size: 0.86rem;
+        line-height: 1.35;
+      }
+
+      .reveal-meta {
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 0.78rem;
+        line-height: 1.35;
+      }
 
       @media (min-width: 960px) {
         .shell {
@@ -712,6 +771,10 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
+        .reveal-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
+        }
+
         .mobile-dock {
           display: none;
         }
@@ -751,6 +814,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       let syncedClientPerfMs = performance.now();
       let activeSection = "actions";
       const chatDrafts = Object.create(null);
+      const pendingAutoscrollChannels = new Set();
 
       function escapeHtml(value) {
         return String(value)
@@ -798,24 +862,54 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         });
       }
 
-      function scrollChatListsToBottom() {
+      function captureChatScrollState() {
+        const snapshot = Object.create(null);
         document.querySelectorAll(".chat-list").forEach((node) => {
           if (!(node instanceof HTMLElement)) {
             return;
           }
 
-          node.scrollTop = node.scrollHeight;
-          const last = node.lastElementChild;
-          if (last instanceof HTMLElement) {
-            last.scrollIntoView({ block: "end", inline: "nearest" });
+          const channel = node.dataset.channel;
+          if (!channel) {
+            return;
           }
+
+          const distanceFromBottom = node.scrollHeight - (node.scrollTop + node.clientHeight);
+          snapshot[channel] = {
+            scrollTop: node.scrollTop,
+            nearBottom: distanceFromBottom <= 28,
+          };
         });
+        return snapshot;
       }
 
-      function queueChatAutoscroll() {
+      function restoreChatScrollState(snapshot) {
+        document.querySelectorAll(".chat-list").forEach((node) => {
+          if (!(node instanceof HTMLElement)) {
+            return;
+          }
+
+          const channel = node.dataset.channel;
+          if (!channel) {
+            return;
+          }
+
+          const previous = snapshot[channel];
+          const shouldStickToBottom = pendingAutoscrollChannels.has(channel) || !previous || previous.nearBottom;
+          if (shouldStickToBottom) {
+            node.scrollTop = node.scrollHeight;
+            return;
+          }
+
+          const maxScrollTop = Math.max(0, node.scrollHeight - node.clientHeight);
+          node.scrollTop = Math.min(previous.scrollTop, maxScrollTop);
+        });
+        pendingAutoscrollChannels.clear();
+      }
+
+      function queueChatAutoscroll(snapshot) {
         requestAnimationFrame(() => {
-          scrollChatListsToBottom();
-          setTimeout(scrollChatListsToBottom, 40);
+          restoreChatScrollState(snapshot);
         });
       }
 
@@ -889,6 +983,9 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       }
 
       function pickDefaultSection(state) {
+        if (state.room.phase === "ended") {
+          return "state";
+        }
         if (actionableControlCount(state) > 0) {
           return "actions";
         }
@@ -1032,7 +1129,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       function chatMessage(state, viewerId, message) {
         if (message.kind === "system") {
           return \`
-            <div class="chat-row chat-row--system">
+            <div class="chat-row chat-row--system" data-message-id="\${escapeHtml(message.id)}">
               <div class="chat-bubble chat-bubble--system">\${escapeHtml(message.content)}</div>
             </div>
           \`;
@@ -1046,7 +1143,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         const avatar = mine ? "" : \`<div class="chat-avatar \${nickClass}">\${escapeHtml(authorInitial(message.authorName))}</div>\`;
 
         return \`
-          <div class="\${rowClass}">
+          <div class="\${rowClass}" data-message-id="\${escapeHtml(message.id)}">
             \${avatar}
             <div class="\${stackClass}">
               <div class="chat-author \${nickClass}">\${escapeHtml(displayAuthorName(viewerId, message))}</div>
@@ -1099,6 +1196,26 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         return \`panel section-panel \${sectionId === activeSection ? "is-active" : ""}\`;
       }
 
+      function revealCard(state, revealed) {
+        const teamClass = revealed.teamLabel === "마피아팀" ? "mafia" : "citizen";
+        const nickClass = nicknameClassForUser(state, revealed.userId);
+        const status = revealed.alive ? "생존" : "사망";
+        const extras = [
+          revealed.teamLabel,
+          status,
+          revealed.ascended ? "성불" : "",
+          revealed.deadReason ? \`사유: \${revealed.deadReason}\` : "",
+        ].filter(Boolean).join(" · ");
+
+        return \`
+          <div class="reveal-card reveal-card--\${teamClass}">
+            <div class="reveal-name \${nickClass}">\${escapeHtml(revealed.displayName)}\${revealed.isViewer ? " (나)" : ""}</div>
+            <div class="reveal-role">\${escapeHtml(revealed.roleLabel)}</div>
+            <div class="reveal-meta">\${escapeHtml(extras)}</div>
+          </div>
+        \`;
+      }
+
       function seatCard(state, seat) {
         if (seat.empty) {
           return \`
@@ -1144,6 +1261,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
 
       function render(state) {
         const focusedChat = captureChatDraftState();
+        const chatScrollState = captureChatScrollState();
         ensureActiveSection(state);
         renderHero(state);
         renderMobileDock(state);
@@ -1170,6 +1288,17 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           state.secretChats.length > 0
             ? state.secretChats.map((chat) => chatSection(state, state.viewer.userId, chat, true)).join("")
             : '<div class="line-item muted">현재 접근 가능한 비밀 채팅이 없습니다.</div>';
+        const endedSummary = state.endedSummary
+          ? \`
+              <div class="viewer-card endgame-card\${state.endedSummary.viewerResultLabel === "승리" ? " endgame-card--win" : state.endedSummary.viewerResultLabel === "패배" ? " endgame-card--lose" : ""}">
+                <strong>최종 결과</strong>
+                <div>\${escapeHtml(state.endedSummary.winnerLabel ?? state.endedSummary.reason ?? "게임 종료")}</div>
+                \${state.endedSummary.reason && state.endedSummary.reason !== state.endedSummary.winnerLabel ? \`<div class="footer">\${escapeHtml(state.endedSummary.reason)}</div>\` : ""}
+                \${state.endedSummary.viewerResultLabel ? \`<div class="footer">내 결과: \${escapeHtml(state.endedSummary.viewerResultLabel)}</div>\` : ""}
+              </div>
+              <div class="reveal-grid">\${state.endedSummary.revealedPlayers.map((revealed) => revealCard(state, revealed)).join("")}</div>
+            \`
+          : "";
 
         document.getElementById("app").innerHTML = \`
           <div class="dashboard-grid">
@@ -1200,6 +1329,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
                 </div>
                 <div class="seat-grid">\${state.room.seats.map((seat) => seatCard(state, seat)).join("")}</div>
                 \${state.room.currentTrialTargetName ? \`<div class="line-item"><strong>현재 대상</strong><div>\${escapeHtml(state.room.currentTrialTargetName)}</div></div>\` : ""}
+                \${endedSummary}
               </div>
             </section>
 
@@ -1250,7 +1380,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         restoreChatDraftState(focusedChat);
         updateDeadlineDisplays();
         scheduleDeadlineTicker();
-        queueChatAutoscroll();
+        queueChatAutoscroll(chatScrollState);
       }
 
       async function refreshState() {
@@ -1325,6 +1455,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
             form.reset();
             if (channel) {
               delete chatDrafts[channel];
+              pendingAutoscrollChannels.add(channel);
             }
             await refreshState();
           }
@@ -1357,7 +1488,12 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       });
 
       document.addEventListener("click", async (event) => {
-        const button = event.target;
+        const target = event.target;
+        if (!(target instanceof Element)) {
+          return;
+        }
+
+        const button = target.closest("button");
         if (!(button instanceof HTMLButtonElement)) {
           return;
         }
@@ -1366,7 +1502,6 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         if (navSection) {
           activeSection = navSection;
           render(currentState);
-          queueChatAutoscroll();
           return;
         }
 

@@ -158,3 +158,24 @@ test("상태 패널 좌석은 참가 순서와 닉네임을 유지하고 빈 자
   assert.equal(state.room.seats[7].empty, true);
   assert.equal(state.room.seats[7].displayName, null);
 });
+
+test("종료 상태는 승패와 역할 공개 요약을 포함한다", () => {
+  const game = createTestGame();
+  seedPlayers(game, [
+    { userId: "mafia", role: "mafia", displayName: "루나" },
+    { userId: "doctor", role: "doctor", displayName: "민재", alive: false },
+  ]);
+
+  game.phase = "ended";
+  game.endedWinner = "마피아팀";
+  game.endedReason = "마피아팀 승리";
+
+  const mafiaState = buildDashboardState(game, "mafia").state!;
+  const doctorState = buildDashboardState(game, "doctor").state!;
+
+  assert.equal(mafiaState.endedSummary?.viewerResultLabel, "승리");
+  assert.equal(doctorState.endedSummary?.viewerResultLabel, "패배");
+  assert.equal(mafiaState.endedSummary?.winnerLabel, "마피아팀");
+  assert.equal(mafiaState.endedSummary?.revealedPlayers.length, 2);
+  assert.equal(mafiaState.endedSummary?.revealedPlayers[1].roleLabel, "의사");
+});

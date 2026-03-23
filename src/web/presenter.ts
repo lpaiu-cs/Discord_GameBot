@@ -1,5 +1,5 @@
 import { MafiaGame, WebChatChannel } from "../game/game";
-import { Phase, PlayerState } from "../game/model";
+import { isMafiaTeam, Phase, PlayerState } from "../game/model";
 import { getRoleLabel, getRoleSummary, getTeamLabel } from "../game/rules";
 
 const PHASE_LABELS: Record<Phase, string> = {
@@ -94,6 +94,21 @@ export interface DashboardStatePayload {
     deadPlayers: Array<{ userId: string; displayName: string; ascended: boolean }>;
   };
   publicLines: string[];
+  endedSummary: null | {
+    winnerLabel: string | null;
+    reason: string | null;
+    viewerResultLabel: string | null;
+    revealedPlayers: Array<{
+      userId: string;
+      displayName: string;
+      roleLabel: string;
+      teamLabel: string;
+      alive: boolean;
+      deadReason: string | null;
+      ascended: boolean;
+      isViewer: boolean;
+    }>;
+  };
   publicChat: DashboardChatView;
   secretChats: DashboardChatView[];
   actions: {
@@ -190,6 +205,28 @@ export function buildDashboardState(
       })),
     },
     publicLines: [...game.lastPublicLines],
+    endedSummary:
+      game.phase === "ended"
+        ? {
+            winnerLabel: game.endedWinner,
+            reason: game.endedReason,
+            viewerResultLabel: game.endedWinner
+              ? isMafiaTeam(player.role) === (game.endedWinner === "마피아팀")
+                ? "승리"
+                : "패배"
+              : null,
+            revealedPlayers: orderedPlayers.map((revealedPlayer) => ({
+              userId: revealedPlayer.userId,
+              displayName: revealedPlayer.displayName,
+              roleLabel: getRoleLabel(revealedPlayer.role),
+              teamLabel: getTeamLabel(revealedPlayer.role),
+              alive: revealedPlayer.alive,
+              deadReason: revealedPlayer.deadReason ?? null,
+              ascended: revealedPlayer.ascended,
+              isViewer: revealedPlayer.userId === userId,
+            })),
+          }
+        : null,
     publicChat: buildChatView(game, "public", userId),
     secretChats: (["mafia", "lover", "graveyard"] as const)
       .filter((channel) => game.canReadChat(userId, channel))
