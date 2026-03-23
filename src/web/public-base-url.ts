@@ -1,4 +1,6 @@
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync } from "node:fs";
+import path from "node:path";
 
 export interface PublicBaseUrlHandle {
   publicBaseUrl: string;
@@ -42,6 +44,7 @@ export class QuickTunnelProvider implements PublicBaseUrlProvider {
   constructor(
     private readonly localPort: number,
     private readonly enabled: boolean,
+    private readonly cloudflaredPath?: string,
   ) {}
 
   async getPublicBaseUrl(gameId: string): Promise<string> {
@@ -80,7 +83,8 @@ export class QuickTunnelProvider implements PublicBaseUrlProvider {
 
   private async spawnTunnel(gameId: string): Promise<QuickTunnelRecord> {
     return await new Promise<QuickTunnelRecord>((resolve, reject) => {
-      const child = spawn("cloudflared", ["tunnel", "--url", `http://127.0.0.1:${this.localPort}`], {
+      const executable = resolveCloudflaredExecutable(this.cloudflaredPath);
+      const child = spawn(executable, ["tunnel", "--url", `http://127.0.0.1:${this.localPort}`], {
         stdio: ["ignore", "pipe", "pipe"],
       });
 
@@ -153,4 +157,58 @@ export class QuickTunnelProvider implements PublicBaseUrlProvider {
 export function parseQuickTunnelUrl(text: string): string | null {
   const match = text.match(/https:\/\/[a-z0-9-]+\.trycloudflare\.com/iu);
   return match?.[0] ?? null;
+}
+
+export function resolveCloudflaredExecutable(explicitPath?: string): string {
+  const candidates = [
+    explicitPath,
+    process.env.CLOUDFLARED_PATH,
+    findCloudflaredOnPath(),
+    process.platform === "win32" ? path.join(process.cwd(), "bin", "cloudflared.exe") : path.join(process.cwd(), "bin", "cloudflared"),
+    process.platform === "win32"
+      ? path.join(
+          process.env.LOCALAPPDATA ?? "",
+          "Microsoft",
+          "WinGet",
+          "Packages",
+          "Cloudflare.cloudflared_Microsoft.Winget.Source_8wekyb3d8bbwe",
+          "cloudflared.exe",
+        )
+      : undefined,
+    process.platform === "win32"
+      ? path.join(process.env.LOCALAPPDATA ?? "", "Microsoft", "WindowsApps", "cloudflared.exe")
+      : undefined,
+  ].filter((value): value is string => Boolean(value));
+
+  for (const candidate of candidates) {
+    if (isExecutableCandidate(candidate)) {
+      return candidate;
+    }
+  }
+
+  throw new Error("cloudflared 실행 파일을 찾을 수 없습니다. CLOUDFLARED_PATH 를 지정하거나 cloudflared 를 설치해 주세요.");
+}
+
+function findCloudflaredOnPath(): string | undefined {
+  const locator = process.platform === "win32" ? "where.exe" : "which";
+  const result = spawnSync(locator, ["cloudflared"], {
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "ignore"],
+  });
+  if (result.status !== 0) {
+    return undefined;
+  }
+
+  return result.stdout
+    .split(/\r?\n/u)
+    .map((line) => line.trim())
+    .find(Boolean);
+}
+
+function isExecutableCandidate(candidate: string): boolean {
+  if (candidate === "cloudflared") {
+    return true;
+  }
+
+  return existsSync(candidate);
 }
