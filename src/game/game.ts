@@ -897,7 +897,7 @@ export class MafiaGame {
       });
     }
 
-    if (beastAction && beastAction.action === "beastKill" && this.getAliveMafia().length === 0) {
+    if (beastAction && beastAction.action === "beastKill" && !this.hasOtherAliveMafiaTeam(beastAction.actorId)) {
       const target = this.getPlayer(beastAction.targetId);
       if (target && target.alive) {
         markNightDeath(target.userId, "짐승인간 처형");
@@ -912,6 +912,7 @@ export class MafiaGame {
     if (reporterAction) {
       const target = this.getPlayer(reporterAction.targetId);
       const actor = this.getPlayerOrThrow(reporterAction.actorId);
+      const publishFromDay = Math.max(2, this.dayNumber + 1);
       actor.reporterUsed = true;
 
       if (target && target.alive) {
@@ -919,11 +920,11 @@ export class MafiaGame {
           actorId: reporterAction.actorId,
           targetId: target.userId,
           role: target.role,
-          publishFromDay: this.dayNumber + 2,
+          publishFromDay,
         };
         summary.privateLines.push({
           userId: reporterAction.actorId,
-          line: `${target.displayName} 님의 기사를 준비했습니다. 공개 가능 시점은 ${this.dayNumber + 2}번째 낮입니다.`,
+          line: `${target.displayName} 님의 기사를 준비했습니다. 공개 가능 시점은 ${publishFromDay}번째 낮입니다.`,
         });
       } else {
         summary.privateLines.push({
@@ -1189,7 +1190,7 @@ export class MafiaGame {
           targets: this.alivePlayers.filter((target) => target.userId !== userId).map((target) => target.userId),
         };
       case "beastman":
-        if (player.isContacted && this.getAliveMafia().length === 0) {
+        if (player.isContacted && !this.hasOtherAliveMafiaTeam(userId)) {
           return {
             action: "beastKill",
             title: "짐승인간 처형 대상",
@@ -1772,6 +1773,10 @@ export class MafiaGame {
 
   private getAliveMafia(): PlayerState[] {
     return this.alivePlayers.filter((player) => isMafiaTeam(player.role));
+  }
+
+  private hasOtherAliveMafiaTeam(userId: string): boolean {
+    return this.getAliveMafia().some((player) => player.userId !== userId);
   }
 
   private getVoteWeight(player: PlayerState): number {
