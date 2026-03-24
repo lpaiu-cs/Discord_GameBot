@@ -6,15 +6,15 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "dev": "tsx src/index.ts",
-    "dev:preview": "powershell -NoProfile -Command \"$env:DISCORD_BOT_TOKEN='preview-token'; $env:DISCORD_APPLICATION_ID='preview-app'; $env:PUBLIC_BASE_URL='http://localhost:3010'; $env:WEB_SESSION_SECRET='preview-web-session-secret'; $env:JOIN_TICKET_SECRET='preview-join-ticket-secret'; tsx src/dev/web-preview.ts\"",
-    "dev:practice": "powershell -NoProfile -Command \"$env:PRACTICE_SCENARIO='practice1'; $env:DISCORD_BOT_TOKEN='practice-token'; $env:DISCORD_APPLICATION_ID='practice-app'; $env:PUBLIC_BASE_URL='http://localhost:3014'; $env:WEB_SESSION_SECRET='practice-web-session-secret'; $env:JOIN_TICKET_SECRET='practice-join-ticket-secret'; tsx src/dev/web-practice.ts\"",
-    "dev:practice1": "powershell -NoProfile -Command \"$env:PRACTICE_SCENARIO='practice1'; $env:DISCORD_BOT_TOKEN='practice-token'; $env:DISCORD_APPLICATION_ID='practice-app'; $env:PUBLIC_BASE_URL='http://localhost:3014'; $env:WEB_SESSION_SECRET='practice-web-session-secret'; $env:JOIN_TICKET_SECRET='practice-join-ticket-secret'; tsx src/dev/web-practice.ts\"",
-    "dev:practice2": "powershell -NoProfile -Command \"$env:PRACTICE_SCENARIO='practice2'; $env:DISCORD_BOT_TOKEN='practice-token'; $env:DISCORD_APPLICATION_ID='practice-app'; $env:PUBLIC_BASE_URL='http://localhost:3014'; $env:WEB_SESSION_SECRET='practice-web-session-secret'; $env:JOIN_TICKET_SECRET='practice-join-ticket-secret'; tsx src/dev/web-practice.ts\"",
-    "dev:practice3": "powershell -NoProfile -Command \"$env:PRACTICE_SCENARIO='practice3'; $env:DISCORD_BOT_TOKEN='practice-token'; $env:DISCORD_APPLICATION_ID='practice-app'; $env:PUBLIC_BASE_URL='http://localhost:3014'; $env:WEB_SESSION_SECRET='practice-web-session-secret'; $env:JOIN_TICKET_SECRET='practice-join-ticket-secret'; tsx src/dev/web-practice.ts\"",
-    "dev:practice4": "powershell -NoProfile -Command \"$env:PRACTICE_SCENARIO='practice4'; $env:DISCORD_BOT_TOKEN='practice-token'; $env:DISCORD_APPLICATION_ID='practice-app'; $env:PUBLIC_BASE_URL='http://localhost:3014'; $env:WEB_SESSION_SECRET='practice-web-session-secret'; $env:JOIN_TICKET_SECRET='practice-join-ticket-secret'; tsx src/dev/web-practice.ts\"",
-    "dev:practice:all": "powershell -NoProfile -Command \"$env:PRACTICE_SCENARIO='all'; $env:DISCORD_BOT_TOKEN='practice-token'; $env:DISCORD_APPLICATION_ID='practice-app'; $env:PUBLIC_BASE_URL='http://localhost:3014'; $env:WEB_SESSION_SECRET='practice-web-session-secret'; $env:JOIN_TICKET_SECRET='practice-join-ticket-secret'; tsx src/dev/web-practice.ts\"",
+    "dev:preview": "cross-env DISCORD_BOT_TOKEN=preview-token DISCORD_APPLICATION_ID=preview-app PUBLIC_BASE_URL=http://localhost:3010 WEB_SESSION_SECRET=preview-web-session-secret JOIN_TICKET_SECRET=preview-join-ticket-secret tsx src/dev/web-preview.ts",
+    "dev:practice": "cross-env PRACTICE_SCENARIO=practice1 DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx src/dev/web-practice.ts",
+    "dev:practice1": "cross-env PRACTICE_SCENARIO=practice1 DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx src/dev/web-practice.ts",
+    "dev:practice2": "cross-env PRACTICE_SCENARIO=practice2 DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx src/dev/web-practice.ts",
+    "dev:practice3": "cross-env PRACTICE_SCENARIO=practice3 DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx src/dev/web-practice.ts",
+    "dev:practice4": "cross-env PRACTICE_SCENARIO=practice4 DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx src/dev/web-practice.ts",
+    "dev:practice:all": "cross-env PRACTICE_SCENARIO=all DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx src/dev/web-practice.ts",
     "start": "node dist/index.js",
-    "test": "powershell -NoProfile -Command \"$env:DISCORD_BOT_TOKEN='test-token'; $env:DISCORD_APPLICATION_ID='test-app'; $env:PUBLIC_BASE_URL='https://mafia.test'; $env:WEB_SESSION_SECRET='test-web-secret'; $env:JOIN_TICKET_SECRET='test-join-secret'; tsx --test tests/all.test.ts\""
+    "test": "cross-env DISCORD_BOT_TOKEN=test-token DISCORD_APPLICATION_ID=test-app PUBLIC_BASE_URL=https://mafia.test WEB_SESSION_SECRET=test-web-secret JOIN_TICKET_SECRET=test-join-secret tsx --test tests/all.test.ts"
   },
   "keywords": [
     "discord",
@@ -29,6 +29,7 @@
   },
   "devDependencies": {
     "@types/node": "^24.7.2",
+    "cross-env": "^10.1.0",
     "tsx": "^4.20.6",
     "typescript": "^5.9.3"
   }

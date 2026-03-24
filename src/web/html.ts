@@ -94,7 +94,8 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       .nick-color-7 { color: #f5f7fb; }
       .nick-color-8 { color: #ff94d1; }
 
-      .hero p {
+      #hero-subtitle {
+        display: none;
         margin: 0;
         color: var(--muted);
         font-size: 0.84rem;
@@ -259,7 +260,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         display: flex;
         align-items: flex-end;
         aspect-ratio: 1 / 1;
-        padding: 16px 8px 8px;
+        padding: 12px 6px 6px;
         overflow: visible;
         border: 1px solid rgba(255, 255, 255, 0.07);
         border-radius: 12px;
@@ -365,12 +366,12 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         padding: 0 2px 1px;
         font-size: 0.7rem;
         font-weight: 800;
-        line-height: 1.12;
-        word-break: keep-all;
+        line-height: 1.15;
+        word-break: break-all;
         overflow-wrap: anywhere;
         display: -webkit-box;
+        -webkit-line-clamp: 2;
         -webkit-box-orient: vertical;
-        -webkit-line-clamp: 4;
         overflow: hidden;
         text-shadow: 0 1px 0 rgba(0, 0, 0, 0.28);
       }
@@ -503,7 +504,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       }
 
       .chat-meta {
-        font-size: 0.72rem;
+        font-size: 0.8rem;
         line-height: 1.2;
         opacity: 0.9;
       }
@@ -627,33 +628,46 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       .dock-button {
         position: relative;
         min-height: 54px;
-        padding: 10px 6px;
+        padding: 6px 4px;
         border: 0;
         border-radius: 16px;
         background: transparent;
         color: var(--muted);
         touch-action: manipulation;
         -webkit-tap-highlight-color: transparent;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .dock-icon {
+        display: block;
+        font-size: 1.1rem;
+        margin-bottom: 2px;
+        pointer-events: none;
       }
 
       .dock-button strong {
         display: block;
-        font-size: 0.8rem;
+        font-size: 0.75rem;
         pointer-events: none;
       }
 
       .dock-badge {
         position: absolute;
-        top: 6px;
-        right: 6px;
-        min-width: 18px;
-        padding: 2px 5px;
+        top: 2px;
+        right: 4px;
+        min-width: 16px;
+        padding: 1px 4px;
         border-radius: 999px;
-        background: rgba(255, 255, 255, 0.12);
-        color: var(--text);
-        font-size: 0.72rem;
+        background: #ff4747;
+        color: #ffffff;
+        font-size: 0.7rem;
+        font-weight: 800;
         line-height: 1.2;
         pointer-events: none;
+        box-shadow: 0 2px 4px rgba(0,0,0,0.5);
       }
 
       .dock-button.is-active {
@@ -724,10 +738,258 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         line-height: 1.35;
       }
 
+      /* Phase 1: Phase label chip */
+      .phase-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 6px;
+        min-height: 36px;
+        padding: 8px 12px;
+        border-radius: 999px;
+        font-size: 0.84rem;
+        font-weight: 700;
+        border: 1px solid;
+      }
+
+      .phase-chip--night {
+        background: rgba(60, 80, 160, 0.22);
+        border-color: rgba(100, 130, 220, 0.32);
+        color: #a8c4ff;
+      }
+
+      .phase-chip--discussion {
+        background: rgba(245, 180, 95, 0.18);
+        border-color: rgba(245, 200, 120, 0.32);
+        color: #ffe0a8;
+      }
+
+      .phase-chip--vote {
+        background: rgba(255, 140, 80, 0.18);
+        border-color: rgba(255, 160, 100, 0.3);
+        color: #ffd0b0;
+      }
+
+      .phase-chip--defense {
+        background: rgba(255, 100, 100, 0.18);
+        border-color: rgba(255, 120, 120, 0.3);
+        color: #ffc0c0;
+      }
+
+      .phase-chip--trial {
+        background: rgba(200, 60, 60, 0.22);
+        border-color: rgba(220, 80, 80, 0.35);
+        color: #ffb0b0;
+      }
+
+      .phase-chip--ended {
+        background: rgba(120, 120, 120, 0.18);
+        border-color: rgba(160, 160, 160, 0.3);
+        color: #c8c8c8;
+      }
+
+      .phase-chip--lobby {
+        background: rgba(120, 200, 160, 0.15);
+        border-color: rgba(140, 210, 170, 0.3);
+        color: #b0e8cc;
+      }
+
+      /* Phase 1: Hero border glow per phase */
+      .hero.hero--night {
+        border-color: rgba(80, 110, 200, 0.3);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(100, 140, 230, 0.12);
+      }
+
+      .hero.hero--discussion {
+        border-color: rgba(245, 190, 100, 0.3);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(245, 200, 120, 0.12);
+      }
+
+      .hero.hero--vote {
+        border-color: rgba(255, 150, 90, 0.3);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 160, 100, 0.12);
+      }
+
+      .hero.hero--defense,
+      .hero.hero--trial {
+        border-color: rgba(220, 80, 80, 0.3);
+        box-shadow: 0 18px 48px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(230, 100, 100, 0.12);
+      }
+
+      /* Phase 1: Timer progress bar */
+      .timer-chip {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        min-height: 36px;
+        padding: 8px 12px;
+        border: 1px solid rgba(255, 255, 255, 0.08);
+        border-radius: 999px;
+        background: rgba(255, 255, 255, 0.06);
+        color: var(--muted);
+        font-size: 0.84rem;
+      }
+
+      .timer-chip strong {
+        color: var(--text);
+        font-size: 0.9rem;
+      }
+
+      .timer-bar {
+        position: relative;
+        width: 40px;
+        height: 5px;
+        border-radius: 3px;
+        background: rgba(255, 255, 255, 0.1);
+        overflow: hidden;
+      }
+
+      .timer-bar-fill {
+        position: absolute;
+        top: 0;
+        left: 0;
+        height: 100%;
+        border-radius: 3px;
+        background: linear-gradient(90deg, var(--accent), var(--accent-strong));
+        transition: width 1s linear;
+      }
+
+      .timer-bar-fill.is-urgent {
+        background: linear-gradient(90deg, var(--danger), #ff4040);
+      }
+
+      /* Phase 2: Seat avatar */
+      .seat-avatar {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 28px;
+        height: 28px;
+        margin: 0 auto 4px;
+        border-radius: 50%;
+        font-size: 0.72rem;
+        font-weight: 800;
+        text-shadow: 0 1px 0 rgba(0, 0, 0, 0.3);
+        border: 1px solid rgba(255, 255, 255, 0.12);
+      }
+
+      .seat-card.is-dead .seat-avatar {
+        opacity: 0.4;
+      }
+
+      .seat-dead-icon {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -60%);
+        font-size: 1.1rem;
+        z-index: 5;
+        filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+        pointer-events: none;
+      }
+
+      .seat-card.is-viewer {
+        border-color: rgba(245, 180, 95, 0.42);
+        box-shadow: inset 0 0 0 1px rgba(245, 180, 95, 0.16), 0 0 10px rgba(245, 180, 95, 0.12);
+      }
+
+      /* Phase 3: Action grid selector */
+      .action-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 6px;
+      }
+
+      .action-grid-cell {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 4px;
+        padding: 10px 4px;
+        border: 1px solid rgba(255, 255, 255, 0.07);
+        border-radius: 12px;
+        background: rgba(255, 255, 255, 0.04);
+        cursor: pointer;
+        transition: border-color 0.15s, background 0.15s;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+      }
+
+      .action-grid-cell:hover {
+        border-color: rgba(255, 255, 255, 0.14);
+        background: rgba(255, 255, 255, 0.07);
+      }
+
+      .action-grid-cell.is-selected {
+        border-color: rgba(245, 180, 95, 0.5);
+        background: rgba(245, 180, 95, 0.12);
+        box-shadow: 0 0 8px rgba(245, 180, 95, 0.15);
+      }
+
+      .action-grid-avatar {
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.78rem;
+        font-weight: 800;
+        border: 1px solid rgba(255, 255, 255, 0.1);
+      }
+
+      .action-grid-name {
+        font-size: 0.68rem;
+        font-weight: 700;
+        text-align: center;
+        line-height: 1.15;
+        word-break: break-all;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+      }
+
+      /* Phase 3: Trial vote button colors */
+      button.vote-yes {
+        background: linear-gradient(145deg, #ff6b6b, #e84545);
+        color: #fff;
+      }
+
+      button.vote-no {
+        background: linear-gradient(145deg, #5b8def, #3d6dd8);
+        color: #fff;
+      }
+
+      /* Phase 4: System message left bar */
+      .chat-bubble--system {
+        position: relative;
+        padding-left: 14px;
+        text-align: left;
+        border-left: 3px solid var(--accent);
+        border-radius: 4px;
+      }
+
+      /* Phase 4: Secret chat channel themes */
+      .secret-chat--mafia .panel-head h3 { color: #ff7171; }
+      .secret-chat--lover .panel-head h3 { color: #ff94d1; }
+      .secret-chat--graveyard .panel-head h3 { color: #9ca8b8; }
+
+      .secret-chat--mafia { border-color: rgba(255, 115, 115, 0.2); }
+      .secret-chat--lover { border-color: rgba(255, 148, 209, 0.2); }
+      .secret-chat--graveyard { border-color: rgba(156, 168, 184, 0.2); }
+
       @media (min-width: 960px) {
         .shell {
           width: min(1280px, calc(100vw - 44px));
           padding: 22px 20px 36px;
+        }
+
+        #hero-subtitle {
+          display: block;
+        }
+
+        .seat-grid {
+          grid-template-columns: repeat(4, minmax(0, 1fr));
         }
 
         .hero {
@@ -818,11 +1080,11 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       const initialState = JSON.parse(document.getElementById("initial-state").textContent);
       const csrfToken = document.querySelector('meta[name="csrf-token"]').content;
       const dockSections = [
-        { id: "state", label: "상태" },
-        { id: "public", label: "공개" },
-        { id: "actions", label: "행동" },
-        { id: "secret", label: "비밀" },
-        { id: "logs", label: "개인" },
+        { id: "state", label: "상태", icon: "👤" },
+        { id: "public", label: "공개", icon: "💬" },
+        { id: "actions", label: "행동", icon: "⚡" },
+        { id: "secret", label: "비밀", icon: "🤫" },
+        { id: "logs", label: "개인", icon: "🔒" },
       ];
       let currentState = initialState;
       let sinceVersion = initialState.version;
@@ -877,6 +1139,24 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         const text = formatDeadline(currentState.room.deadlineAt);
         document.querySelectorAll("[data-live-deadline]").forEach((node) => {
           node.textContent = text;
+        });
+
+        document.querySelectorAll("[data-live-timer-fill]").forEach((node) => {
+          if (!(node instanceof HTMLElement)) return;
+          const deadlineAt = currentState.room.deadlineAt;
+          if (!deadlineAt) {
+            node.style.width = "0%";
+            return;
+          }
+          const totalMs = 300 * 1000;
+          const remaining = Math.max(0, deadlineAt - estimateServerNow());
+          const pct = Math.min(100, (remaining / totalMs) * 100);
+          node.style.width = pct + "%";
+          if (pct < 20) {
+            node.classList.add("is-urgent");
+          } else {
+            node.classList.remove("is-urgent");
+          }
         });
       }
 
@@ -1041,15 +1321,32 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         return \`nick-color-\${(hash % 8) + 1}\`;
       }
 
+      function phaseDisplayText(state) {
+        const phase = state.room.phase;
+        const label = state.room.phaseLabel;
+        if (phase === "night") return \`\${state.room.nightNumber}일째 밤\`;
+        if (phase === "discussion") return \`\${state.room.dayNumber}일째 낮 토론\`;
+        if (phase === "vote") return \`\${state.room.dayNumber}일째 투표\`;
+        if (phase === "defense") return \`\${state.room.dayNumber}일째 최후의 반론\`;
+        if (phase === "trial") return \`\${state.room.dayNumber}일째 찬반 투표\`;
+        return label;
+      }
+
       function renderHero(state) {
         const team = teamClass(state);
+        const phase = state.room.phase;
         const heroTitle = document.getElementById("hero-title");
         heroTitle.textContent = state.viewer.displayName;
         heroTitle.className = nicknameClassForUser(state, state.viewer.userId);
         document.getElementById("hero-subtitle").textContent = \`게임 ID \${state.room.gameId}\`;
+
+        const heroEl = document.querySelector(".hero");
+        heroEl.className = "hero hero--" + phase;
+
         document.getElementById("hero-meta").innerHTML = [
+          \`<div class="phase-chip phase-chip--\${phase}">\${escapeHtml(phaseDisplayText(state))}</div>\`,
           \`<div class="meta-chip role-chip role-chip--\${team}"><strong>\${escapeHtml(state.viewer.roleLabel)}</strong></div>\`,
-          \`<div class="meta-chip"><strong data-live-deadline>\${escapeHtml(formatDeadline(state.room.deadlineAt))}</strong></div>\`,
+          \`<div class="timer-chip"><strong data-live-deadline>\${escapeHtml(formatDeadline(state.room.deadlineAt))}</strong><div class="timer-bar" data-timer-total="\${state.room.deadlineAt ? 300 : 0}"><div class="timer-bar-fill" data-live-timer-fill></div></div></div>\`,
         ].join("");
       }
 
@@ -1071,6 +1368,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
                   class="dock-button\${activeSection === section.id ? " is-active" : ""}"
                   data-nav-section="\${section.id}"
                 >
+                  <span class="dock-icon">\${section.icon}</span>
                   <strong>\${section.label}</strong>
                   \${counts[section.id] ? \`<span class="dock-badge">\${escapeHtml(counts[section.id])}</span>\` : ""}
                 </button>
@@ -1098,10 +1396,13 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         }
 
         if (control.type === "buttons") {
+          const isTrialVote = control.actionType === "trial_vote";
           const buttons = (control.buttons || [])
             .map(
-              (button) =>
-                \`<button type="button" data-action-type="\${escapeHtml(control.actionType)}" data-value="\${escapeHtml(button.value)}">\${escapeHtml(button.label)}</button>\`,
+              (button) => {
+                const cls = isTrialVote ? (button.value === "yes" ? " vote-yes" : " vote-no") : "";
+                return \`<button type="button" class="\${cls}" data-action-type="\${escapeHtml(control.actionType)}" data-value="\${escapeHtml(button.value)}">\${escapeHtml(button.label)}</button>\`;
+              },
             )
             .join("");
           const current = control.currentLabel ? \`<div class="footer">현재 선택: \${escapeHtml(control.currentLabel)}</div>\` : "";
@@ -1115,20 +1416,24 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           \`;
         }
 
-        const options = (control.options || [])
-          .map((option) => \`<option value="\${escapeHtml(option.value)}">\${escapeHtml(option.label)}</option>\`)
-          .join("");
+        const gridCells = (control.options || []).map((option) => {
+          const initial = String(option.label || "").trim().slice(0, 1) || "?";
+          const nickClass = nicknameClassForUser(currentState, option.value);
+          const selected = control.currentValue === option.value ? " is-selected" : "";
+          return \`<div class="action-grid-cell\${selected}" data-grid-value="\${escapeHtml(option.value)}" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}">
+            <div class="action-grid-avatar \${nickClass}">\${escapeHtml(initial)}</div>
+            <div class="action-grid-name">\${escapeHtml(option.label)}</div>
+          </div>\`;
+        }).join("");
         const current = control.currentLabel ? \`<div class="footer">현재 선택: \${escapeHtml(control.currentLabel)}</div>\` : "";
         return \`
           <div class="control">
             <strong>\${escapeHtml(control.title)}</strong>
             <div class="muted">\${escapeHtml(control.description)}</div>
-            <form class="action-form" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}">
-              <select name="targetId" required>
-                <option value="">대상을 선택하세요</option>
-                \${options}
-              </select>
-              <button type="submit">제출</button>
+            <div class="action-grid" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}">\${gridCells}</div>
+            <form class="action-form" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}" style="margin-top:8px">
+              <input type="hidden" name="targetId" value="\${escapeHtml(control.currentValue || "")}" />
+              <button type="submit"\${control.currentValue ? "" : " disabled"}>제출</button>
             </form>
             \${current}
           </div>
@@ -1213,7 +1518,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
                 <button type="submit">전송</button>
               </form>
             \`
-          : '<div class="footer">현재 이 채널에 쓸 수 없습니다.</div>';
+          : '<div class="notice" style="text-align: center; color: var(--muted); background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1);">🔒 현재 이 채널에 쓸 수 없습니다.</div>';
 
         const heading = withHeading
           ? \`
@@ -1225,8 +1530,9 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
             \`
           : "";
 
+        const channelTheme = withHeading ? \` secret-chat--\${chat.channel}\` : "";
         return \`
-          <div class="\${withHeading ? "secret-chat" : ""}">
+          <div class="\${withHeading ? "secret-chat" : ""}\${channelTheme}">
             \${heading}
             <div class="chat-shell">
               <div class="chat-list" data-channel="\${escapeHtml(chat.channel)}">\${messages}</div>
@@ -1267,6 +1573,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
               <div class="seat-head">
                 <span class="seat-index">\${seat.seat}</span>
               </div>
+              <div class="seat-avatar" style="background: rgba(255,255,255,0.06); color: var(--muted);">?</div>
               <div class="seat-name muted">빈 자리</div>
             </div>
           \`;
@@ -1291,6 +1598,8 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           classes.push("is-dead");
         }
         const nickClass = nicknameClassForUser(state, seat.userId);
+        const initial = String(seat.displayName || "").trim().slice(0, 1) || "?";
+        const deadIcon = !seat.alive ? '<span class="seat-dead-icon">💀</span>' : '';
 
         return \`
           <div class="\${classes.join(" ")}">
@@ -1298,6 +1607,8 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
               <span class="seat-index">\${seat.seat}</span>
               <div class="seat-flags">\${flags.join("")}</div>
             </div>
+            \${deadIcon}
+            <div class="seat-avatar \${nickClass}">\${escapeHtml(initial)}</div>
             <div class="seat-name \${nickClass}">\${escapeHtml(seat.displayName)}</div>
           </div>
         \`;
@@ -1525,6 +1836,28 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       document.addEventListener("click", async (event) => {
         const target = event.target;
         if (!(target instanceof Element)) {
+          return;
+        }
+
+        const gridCell = target.closest(".action-grid-cell");
+        if (gridCell instanceof HTMLElement) {
+          const gridValue = gridCell.dataset.gridValue;
+          const gridParent = gridCell.closest(".action-grid");
+          if (gridValue && gridParent) {
+            gridParent.querySelectorAll(".action-grid-cell").forEach((c) => c.classList.remove("is-selected"));
+            gridCell.classList.add("is-selected");
+            const form = gridParent.nextElementSibling;
+            if (form instanceof HTMLFormElement) {
+              const hiddenInput = form.querySelector('input[name="targetId"]');
+              if (hiddenInput instanceof HTMLInputElement) {
+                hiddenInput.value = gridValue;
+              }
+              const submitButton = form.querySelector('button[type="submit"]');
+              if (submitButton instanceof HTMLButtonElement) {
+                submitButton.disabled = false;
+              }
+            }
+          }
           return;
         }
 

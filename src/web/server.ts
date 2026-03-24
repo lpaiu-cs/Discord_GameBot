@@ -128,9 +128,13 @@ export class DashboardServer {
       const session = this.options.sessionStore.create(payload.gameId, payload.discordUserId);
       const cookieValue = this.options.sessionStore.serializeCookieValue(session.id);
       const cookieName = this.cookieNameFor(payload.gameId);
+      
+      const isProduction = process.env.NODE_ENV === "production";
+      const secureFlag = isProduction ? "Secure; " : "";
+      
       response.setHeader(
         "Set-Cookie",
-        `${cookieName}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; Secure; SameSite=Lax`,
+        `${cookieName}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; ${secureFlag}SameSite=Lax`,
       );
       response.statusCode = 302;
       response.setHeader("Location", `/game/${encodeURIComponent(payload.gameId)}`);
