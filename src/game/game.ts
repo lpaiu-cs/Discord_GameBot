@@ -108,6 +108,7 @@ export interface WebPrivateLogEntry {
 
 export class GameManager {
   private readonly games = new Map<string, MafiaGame>();
+  public onGameStateChange?: (gameId: string) => void;
 
   constructor(private readonly onEnded?: (game: MafiaGame) => void) {}
 
@@ -138,6 +139,7 @@ export class GameManager {
         }
       },
       config.gameDeliveryMode,
+      (g) => this.onGameStateChange?.(g.id),
     );
     this.games.set(guild.id, game);
     return game;
@@ -201,6 +203,7 @@ export class MafiaGame {
     ruleset: Ruleset,
     private readonly onEnded: (guildId: string) => void,
     readonly deliveryMode: GameDeliveryMode = "discord-dm",
+    public onStateChange?: (game: MafiaGame) => void,
   ) {
     this.id = `${Date.now().toString(36)}-${Math.floor(Math.random() * 9999)
       .toString()
@@ -243,6 +246,7 @@ export class MafiaGame {
 
   bumpStateVersion(): number {
     this.stateVersion += 1;
+    this.onStateChange?.(this);
     return this.stateVersion;
   }
 

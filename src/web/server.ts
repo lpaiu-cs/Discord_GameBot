@@ -1,4 +1,5 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from "node:http";
+import { WebSocketServer, WebSocket } from "ws";
 import { readFile } from "node:fs/promises";
 import { resolve as resolvePath, basename } from "node:path";
 import { Client } from "discord.js";
@@ -19,6 +20,7 @@ interface DashboardServerOptions {
 
 export class DashboardServer {
   private readonly server: Server;
+  private readonly wss: WebSocketServer;
   private readonly authRateLimit = new RateLimiter(20, 60_000);
   private readonly stateRateLimit = new RateLimiter(240, 60_000);
   private readonly actionRateLimit = new RateLimiter(120, 60_000);
@@ -29,6 +31,55 @@ export class DashboardServer {
     this.server = createServer((request, response) => {
       void this.handleRequest(request, response);
     });
+
+    this.wss = new WebSocketServer({ noServer: true });
+
+    this.server.on("upgrade", (request, socket, head) => {
+      const url = new URL(request.url ?? "/", "http://127.0.0.1");
+      const match = url.pathname.match(/^\/api\/game\/([^/]+)\/ws$/u);
+      if (!match) {
+        socket.destroy();
+        return;
+      }
+      
+      const gameId = match[1];
+      const session = this.requireSessionForWs(request, gameId);
+      if (!session) {
+        socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+        socket.destroy();
+        return;
+      }
+
+      this.wss.handleUpgrade(request, socket, head, (ws) => {
+        (ws as any).gameId = gameId;
+        (ws as any).discordUserId = session.discordUserId;
+        this.wss.emit("connection", ws, request);
+      });
+    });
+
+    this.options.gameManager.onGameStateChange = (gameId: string) => {
+      this.broadcastGameState(gameId);
+    };
+  }
+
+  public broadcastGameState(gameId: string): void {
+     const game = this.options.gameManager.findByGameId(gameId);
+     if (!game) return;
+
+     this.wss.clients.forEach((client) => {
+       if (client.readyState === WebSocket.OPEN) {
+         const clientGameId = (client as any).gameId;
+         const userId = (client as any).discordUserId;
+         if (clientGameId === gameId && userId) {
+            try {
+              const payload = buildDashboardState(game, userId);
+              client.send(JSON.stringify({ type: "state", payload }));
+            } catch (e) {
+              // Ignore
+            }
+         }
+       }
+     });
   }
 
   async listen(): Promise<number> {
@@ -65,7 +116,7 @@ export class DashboardServer {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       const pathname = url.pathname;
 
-      const resourceMatch = pathname.match(/^\/resource\/([A-Za-z0-9_-]+\.(?:png|svg))$/u);
+      const resourceMatch = pathname.match(/^\/resource\/(.+?\.(?:png|svg|wav))$/u);
       if (resourceMatch && method === "GET") {
         await this.handleResource(response, resourceMatch[1]);
         return;
@@ -108,9 +159,8 @@ export class DashboardServer {
   }
 
   private async handleResource(response: ServerResponse, filename: string): Promise<void> {
-    const safeFilename = basename(filename);
     const resourceDir = resolvePath(__dirname, "../../resource");
-    const filePath = resolvePath(resourceDir, safeFilename);
+    const filePath = resolvePath(resourceDir, filename);
     if (!filePath.startsWith(resourceDir)) {
       this.sendJson(response, 403, { error: "접근이 거부되었습니다." });
       return;
@@ -122,6 +172,7 @@ export class DashboardServer {
       let contentType = "application/octet-stream";
       if (filename.endsWith(".svg")) contentType = "image/svg+xml";
       else if (filename.endsWith(".png")) contentType = "image/png";
+      else if (filename.endsWith(".wav")) contentType = "audio/wav";
       response.setHeader("content-type", contentType);
       response.setHeader("cache-control", "public, max-age=86400, immutable");
       response.end(data);
@@ -296,6 +347,26 @@ export class DashboardServer {
     const session = this.options.sessionStore.touch(sessionId);
     if (!session || session.gameId !== gameId) {
       this.respondUnauthenticated(response, apiMode);
+      return null;
+    }
+
+    return session;
+  }
+
+  private requireSessionForWs(request: IncomingMessage, gameId: string): WebSession | null {
+    const cookies = parseCookies(request.headers.cookie ?? "");
+    const rawCookie = cookies[this.cookieNameFor(gameId)] ?? cookies[this.cookieBaseName];
+    if (!rawCookie) {
+      return null;
+    }
+
+    const sessionId = this.options.sessionStore.parseCookieValue(rawCookie);
+    if (!sessionId) {
+      return null;
+    }
+
+    const session = this.options.sessionStore.touch(sessionId);
+    if (!session || session.gameId !== gameId) {
       return null;
     }
 

@@ -1869,6 +1869,41 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         });
       }
 
+      function captureActionDraftState() {
+        const drafts = [];
+        document.querySelectorAll(".action-form").forEach((form) => {
+          if (!(form instanceof HTMLFormElement)) return;
+          const actionType = form.dataset.actionType;
+          const input = form.elements.namedItem("targetId");
+          if (input instanceof HTMLInputElement && input.value) {
+            drafts.push({ actionType, targetId: input.value });
+          }
+        });
+        return drafts;
+      }
+
+      function restoreActionDraftState(drafts) {
+        if (!drafts) return;
+        drafts.forEach((draft) => {
+          const form = document.querySelector('.action-form[data-action-type="' + escapeAttribute(draft.actionType) + '"]');
+          if (form instanceof HTMLFormElement) {
+            const input = form.elements.namedItem("targetId");
+            const btn = form.querySelector('button[type="submit"]');
+            if (input instanceof HTMLInputElement && btn instanceof HTMLButtonElement) {
+              input.value = draft.targetId;
+              btn.disabled = false;
+            }
+            const gridParent = form.previousElementSibling;
+            if (gridParent && gridParent.classList.contains("action-grid")) {
+              const gridCell = gridParent.querySelector('.action-grid-cell[data-grid-value="' + escapeAttribute(draft.targetId) + '"]');
+              if (gridCell instanceof HTMLElement) {
+                gridCell.classList.add("is-selected");
+              }
+            }
+          }
+        });
+      }
+
       function teamClass(state) {
         return state.viewer.teamLabel === "마피아팀" ? "mafia" : "citizen";
       }
@@ -1942,9 +1977,9 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         heroEl.className = "hero hero--" + phase;
 
         document.getElementById("hero-meta").innerHTML = [
-          `<div class="phase-chip phase-chip--${phase}">${escapeHtml(phaseDisplayText(state))}</div>`,
-          `<div class="meta-chip role-chip role-chip--${team}"><strong>${escapeHtml(state.viewer.roleLabel)}</strong></div>`,
-          `<div class="timer-chip"><strong data-live-deadline>${escapeHtml(formatDeadline(state.room.deadlineAt))}</strong><div class="timer-bar" data-timer-total="${state.room.deadlineAt ? 300 : 0}"><div class="timer-bar-fill" data-live-timer-fill></div></div></div>`,
+          \`<div class="phase-chip phase-chip--\${phase}">\${escapeHtml(phaseDisplayText(state))}</div>\`,
+          \`<div class="meta-chip role-chip role-chip--\${team}"><strong>\${escapeHtml(state.viewer.roleLabel)}</strong></div>\`,
+          \`<div class="timer-chip"><strong data-live-deadline>\${escapeHtml(formatDeadline(state.room.deadlineAt))}</strong><div class="timer-bar" data-timer-total="\${state.room.deadlineAt ? 300 : 0}"><div class="timer-bar-fill" data-live-timer-fill></div></div></div>\`,
         ].join("");
       }
 
@@ -1966,24 +2001,22 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
 
         const actionCount = actionableControlCount(state);
 
-        document.getElementById("mobile-dock-root").innerHTML = `
-          <nav class="mobile-dock">
-            ${dockSections
-              .map((section) => `
-                <button
-                  type="button"
-                  class="dock-button${activeSection === section.id ? " is-active" : ""}"
-                  data-nav-section="${section.id}"
-                >
-                  <span class="dock-icon">${section.icon}</span>
-                  <strong>${section.label}</strong>
-                  ${section.id === "actions" && actionCount > 0 ? `<span class="dock-badge">${actionCount}</span>` : ""}
-                  ${section.id !== "actions" && unread[section.id] ? `<span class="dock-badge dock-badge--dot"></span>` : ""}
-                </button>
-              `)
-              .join("")}
-          </nav>
-        \`;
+        document.getElementById("mobile-dock-root").innerHTML = [
+          '<nav class="mobile-dock">',
+          dockSections
+            .map((section) => [
+              '<button type="button" class="dock-button',
+              activeSection === section.id ? ' is-active"' : '"',
+              ' data-nav-section="' + section.id + '">',
+              '<span class="dock-icon">' + section.icon + '</span>',
+              '<strong>' + section.label + '</strong>',
+              section.id === "actions" && actionCount > 0 ? '<span class="dock-badge">' + actionCount + '</span>' : "",
+              section.id !== "actions" && unread[section.id] ? '<span class="dock-badge dock-badge--dot"></span>' : "",
+              '</button>'
+            ].join(''))
+            .join(""),
+          '</nav>'
+        ].join("");
       }
 
       function actionControl(control) {
@@ -2288,6 +2321,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         }
 
         const focusedChat = captureChatDraftState();
+        const actionDrafts = captureActionDraftState();
         const chatScrollState = captureChatScrollState();
         ensureActiveSection(state);
         renderHero(state);
@@ -2402,6 +2436,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           </div>
         \`;
         restoreChatDraftState(focusedChat);
+        restoreActionDraftState(actionDrafts);
         updateDeadlineDisplays();
         scheduleDeadlineTicker();
         queueChatAutoscroll(chatScrollState);
@@ -2478,15 +2513,15 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           if (form.classList.contains("chat-form")) {
             const data = new FormData(form);
             const channel = form.dataset.channel;
-            await postJson(\`/api/game/\${encodeURIComponent(currentState.room.gameId)}/chats/\${encodeURIComponent(form.dataset.channel)}\`, {
-              content: data.get("content"),
-            });
+            const content = data.get("content");
             form.reset();
             if (channel) {
               delete chatDrafts[channel];
               pendingAutoscrollChannels.add(channel);
             }
-            await refreshState();
+            await postJson(\`/api/game/\${encodeURIComponent(currentState.room.gameId)}/chats/\${encodeURIComponent(form.dataset.channel)}\`, {
+              content,
+            });
           }
         } catch (error) {
           showToast(error.message || "요청 실패", "error");
@@ -2618,13 +2653,40 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         }
       });
 
-      function schedulePolling() {
-        if (pollTimer) {
-          clearInterval(pollTimer);
-        }
-
-        const intervalMs = document.hidden ? 7000 : 2000;
-        pollTimer = setInterval(refreshState, intervalMs);
+      let ws = null;
+      let wsReconnectTimer = null;
+      function connectWebSocket() {
+         if (ws) return;
+         const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
+         const wsUrl = protocol + '//' + location.host + '/api/game/' + encodeURIComponent(currentState.room.gameId) + '/ws';
+         ws = new WebSocket(wsUrl);
+         ws.onopen = () => {
+            if (wsReconnectTimer) {
+               clearTimeout(wsReconnectTimer);
+               wsReconnectTimer = null;
+            }
+            refreshState();
+         };
+         ws.onmessage = (event) => {
+            try {
+               const msg = JSON.parse(event.data);
+               if (msg.type === "state" && msg.payload) {
+                  syncServerClock(msg.payload.serverNow);
+                  if (msg.payload.changed && msg.payload.state) {
+                     currentState = msg.payload.state;
+                     sinceVersion = msg.payload.version;
+                     render(currentState);
+                  } else {
+                     sinceVersion = msg.payload.version;
+                     scheduleDeadlineTicker();
+                  }
+               }
+            } catch (e) {}
+         };
+         ws.onclose = () => {
+            ws = null;
+            wsReconnectTimer = setTimeout(connectWebSocket, 2000);
+         };
       }
 
       function scheduleDeadlineTicker() {
@@ -2649,12 +2711,14 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         deadlineTimer = setTimeout(scheduleDeadlineTicker, Math.max(40, untilNextSecond + 12));
       }
 
-      document.addEventListener("visibilitychange", schedulePolling);
+      document.addEventListener("visibilitychange", () => {
+         if (!document.hidden && !ws) connectWebSocket();
+      });
 
       activeSection = pickDefaultSection(currentState);
       syncServerClock(initialState.serverNow);
       render(currentState);
-      schedulePolling();
+      connectWebSocket();
       scheduleDeadlineTicker();
     </script>
   </body>

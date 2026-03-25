@@ -1,0 +1,11 @@
+
+> discord_mafia@2.1.0 dev:preview
+> cross-env DISCORD_BOT_TOKEN=preview-token DISCORD_APPLICATION_ID=preview-app PUBLIC_BASE_URL=http://localhost:3010 WEB_SESSION_SECRET=preview-web-session-secret JOIN_TICKET_SECRET=preview-join-ticket-secret tsx src/dev/web-preview.ts
+
+[dotenv@17.3.1] injecting env (9) from .env -- tip: ⚙️  enable debug logging with { debug: true }
+
+[web-preview] developer preview server is ready
+[web-preview] phase=night role=mafia ruleset=balance
+[web-preview] open: http://localhost:3010/auth/exchange?ticket=eyJnYW1lSWQiOiJtbjVudm5rbi02MTgyIiwiZGlzY29yZFVzZXJJZCI6ImRldi11c2VyIiwiaXNzdWVkQXQiOjE3NzQ0MjAwNDI3NzcsImV4cGlyZXNBdCI6MTc3NDQyMDM0Mjc3NywianRpIjoiNzg4ZGY4NDgtMDg0ZC00MTVlLTkzNjQtNTlkMTRkNTA1NTNiIiwicHVycG9zZSI6ImpvaW4ifQ.Zybcj-56d0fqr7-tb-fnvfnEjY4TT3298xho-Bo9C1g
+[web-preview] press Ctrl+C to stop
+
