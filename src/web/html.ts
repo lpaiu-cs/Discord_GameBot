@@ -954,7 +954,26 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       .action-grid-cell.is-selected {
         border-color: rgba(245, 180, 95, 0.5);
         background: rgba(245, 180, 95, 0.12);
-        box-shadow: 0 0 8px rgba(245, 180, 95, 0.15);
+        box-shadow: 0 0 12px rgba(245, 180, 95, 0.15);
+      }
+
+      .action-target-icon {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        width: 44px;
+        height: 44px;
+        object-fit: contain;
+        opacity: 0.85;
+        z-index: 10;
+        filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        animation: action-icon-pop 0.25s cubic-bezier(0.3, 1.2, 0.4, 1);
+        pointer-events: none;
+      }
+
+      @keyframes action-icon-pop {
+        0% { transform: scale(0.5); opacity: 0; }
+        100% { transform: scale(1); opacity: 0.85; }
       }
 
       .action-grid-avatar {
@@ -1475,7 +1494,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       ];
 
       function roleIconUrl(key) {
-        return "/resource/" + key + "_icon.svg";
+        return "/resource/roles/" + key + "_icon.png";
       }
       let currentState = initialState;
       let sinceVersion = initialState.version;
@@ -1826,9 +1845,12 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           const label = seat.empty ? "빈 자리" : seat.displayName;
           const deadCls = (!seat.empty && !seat.alive) ? " is-dead-cell" : "";
 
+          const actionIconHtml = selected ? \`<img src="/resource/actions/\${currentState.viewer.role}_action.png" class="action-target-icon" />\` : "";
+
           return \`<div class="action-grid-cell\${selected}\${disabledCls}\${deadCls}"\${isSelectable ? \` data-grid-value="\${escapeHtml(seat.userId)}" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}"\` : ""}>
             <div class="action-grid-avatar \${nickClass}">\${seatNum}</div>
             <div class="action-grid-name">\${escapeHtml(label)}</div>
+            \${actionIconHtml}
           </div>\`;
         }).join("");
         const current = control.currentLabel ? \`<div class="footer">현재 선택: \${escapeHtml(control.currentLabel)}</div>\` : "";

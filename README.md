@@ -189,3 +189,18 @@ npm run dev:practice3
   - background/inactive: 7초
 - 상태 변경 API는 `version` 기반 최소 payload 응답을 지원합니다.
 - 세션 정책은 `최근 세션 1개만 유지` 입니다.
+
+## Fake Transparent Background Removal (운영 스크립트)
+
+생성형 AI로 아이콘 이미지를 렌더링할 때 가짜 투명 배경(체크무늬 등)이 텍스처로 남는 경우, 동일한 방식으로 하얀 픽셀만 추출하고 배경색을 날려버리는 파이썬 스크립트를 활용할 수 있습니다. 이미지는 안티앨리어싱을 보존하기 위해 밝기를 Alpha 값으로 맵핑합니다.
+
+사용법:
+```bash
+# 가상환경 구성 및 Pillow 설치
+python3 -m venv venv && source venv/bin/activate
+pip install Pillow
+
+# resource 디렉토리 하위의 파일들에 배경 투명화 및 안티앨리어싱 알고리즘 일괄 적용
+python3 remove_bg.py "resource/roles/*_icon.png"
+```
+*(루트 경로에 위치한 `remove_bg.py` 혹은 `remove_action_bg.py` 를 실행하면 원본 파일을 in-place 덮어쓰기 형태로 투명 처리 해줍니다.)*
