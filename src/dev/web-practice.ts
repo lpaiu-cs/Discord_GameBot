@@ -1,11 +1,14 @@
+import { Client } from "discord.js";
 import { GameManager } from "../game/game";
 import { Ruleset } from "../game/model";
 import {
   buildPracticeScenarioDefinitions,
   createPracticeGame,
+  initializePracticeGame,
+  PRACTICE_VIEWER_ID,
   PracticeScenarioDefinition,
-  PracticeStep,
 } from "./practice-scenarios";
+import { createPracticeClient } from "./practice-client";
 import { DashboardAccessService } from "../web/access";
 import { JoinTicketService } from "../web/join-ticket";
 import { FixedBaseUrlProvider } from "../web/public-base-url";
@@ -13,7 +16,6 @@ import { SessionStore } from "../web/session-store";
 import { DashboardServer } from "../web/server";
 
 const DEFAULT_PORT = 3014;
-const PRACTICE_VIEWER_ID = "practice-viewer";
 const PUBLIC_CHAT_LINES = [
   "일단 발언을 더 들어봅시다.",
   "저는 아직 판단을 보류하겠습니다.",
@@ -41,6 +43,7 @@ async function main(): Promise<void> {
   const practiceBaseUrl = `http://localhost:${port}`;
 
   const manager = new GameManager();
+  const practiceClient = createPracticeClient();
   const definitions = selectPracticeScenarios(buildPracticeScenarioDefinitions(), process.env.PRACTICE_SCENARIO ?? "practice1");
   const games = definitions.map((definition) => ({
     definition,
@@ -55,7 +58,7 @@ async function main(): Promise<void> {
     5 * 60 * 1000,
   );
   const server = new DashboardServer({
-    client: {} as never,
+    client: practiceClient,
     gameManager: manager,
     joinTicketService,
     sessionStore,
@@ -63,14 +66,15 @@ async function main(): Promise<void> {
   });
 
   await server.listen();
+  await Promise.all(games.map(({ definition, game }) => initializePracticeGame(game, definition, practiceClient)));
 
-  const runtimeHandles = games.flatMap(({ definition, game, steps }) => startPracticeScenario(definition, game, steps));
+  const runtimeHandles = games.flatMap(({ definition, game }) => startPracticeScenario(definition, game, practiceClient));
   const links = await Promise.all(
     games.map(async ({ definition, game }) => ({
       id: definition.id,
       title: definition.title,
       summary: definition.summary,
-      url: await dashboardAccess.issueJoinUrl(game.id, "practice-viewer"),
+      url: await dashboardAccess.issueJoinUrl(game.id, PRACTICE_VIEWER_ID),
     })),
   );
 
@@ -86,8 +90,8 @@ async function main(): Promise<void> {
     console.log(`[web-practice] open: ${link.url}`);
   }
   console.log("");
-  console.log("[web-practice] scenarios auto-play for about two in-game days.");
-  console.log("[web-practice] you can still send chat and submit actions while the scripted timeline runs.");
+  console.log("[web-practice] scenarios now use the real game engine.");
+  console.log("[web-practice] only the viewer stays manual; other players auto-act with random valid choices.");
   console.log("[web-practice] press Ctrl+C to stop");
   console.log("");
 
@@ -110,73 +114,220 @@ async function main(): Promise<void> {
 function startPracticeScenario(
   definition: PracticeScenarioDefinition,
   game: PracticeGame,
-  steps: PracticeStep[],
+  client: Client,
 ): NodeJS.Timeout[] {
-  const handles = steps.map((step) =>
-    setTimeout(() => {
-      try {
-        step.run(game);
-        game.bumpStateVersion();
-        console.log(`[web-practice] ${definition.id} -> ${step.label}`);
-      } catch (error) {
-        console.error(`[web-practice] ${definition.id} step failed`, error);
+  const handles: NodeJS.Timeout[] = [];
+  let lastPhaseKey = currentPracticePhaseKey(game);
+  let lastAftermathKey = currentAftermathKey(game);
+
+  schedulePracticePhaseAutomation(definition.id, game, client, handles);
+  schedulePracticeAftermath(definition.id, game, client, handles);
+
+  handles.push(
+    setInterval(() => {
+      const nextPhaseKey = currentPracticePhaseKey(game);
+      if (nextPhaseKey === lastPhaseKey) {
+        return;
       }
-    }, step.afterMs),
+      lastPhaseKey = nextPhaseKey;
+      schedulePracticePhaseAutomation(definition.id, game, client, handles);
+    }, 250),
   );
 
-  let lastPhaseKey = currentPracticePhaseKey(game);
-  schedulePracticeBots(definition.id, game, handles);
+  handles.push(
+    setInterval(() => {
+      const nextAftermathKey = currentAftermathKey(game);
+      if (nextAftermathKey === lastAftermathKey) {
+        return;
+      }
+      lastAftermathKey = nextAftermathKey;
+      schedulePracticeAftermath(definition.id, game, client, handles);
+    }, 250),
+  );
 
-  const phaseWatcher = setInterval(() => {
-    const nextPhaseKey = currentPracticePhaseKey(game);
-    if (nextPhaseKey === lastPhaseKey) {
-      return;
-    }
-    lastPhaseKey = nextPhaseKey;
-    schedulePracticeBots(definition.id, game, handles);
-  }, 400);
-
-  handles.push(phaseWatcher);
   return handles;
 }
 
 function currentPracticePhaseKey(game: PracticeGame): string {
   const token = game.phaseContext?.token ?? -1;
-  return `${game.phase}:${token}:${game.currentTrialTargetId ?? ""}`;
+  return `${game.phase}:${token}:${game.currentTrialTargetId ?? ""}:${game.pendingArticle?.actorId ?? ""}`;
 }
 
-function schedulePracticeBots(
+function currentAftermathKey(game: PracticeGame): string {
+  const choice = game.pendingAftermathChoice;
+  if (!choice) {
+    return "";
+  }
+  return `${choice.token}:${choice.actorId}:${choice.action}`;
+}
+
+function schedulePracticePhaseAutomation(
   scenarioId: string,
   game: PracticeGame,
+  client: Client,
   handles: NodeJS.Timeout[],
 ): void {
-  const phase = game.phase;
-  const token = game.phaseContext?.token ?? -1;
-  if (phase === "ended") {
+  if (game.phase === "ended" || !game.phaseContext) {
     return;
   }
 
-  if (phase === "vote") {
-    schedulePracticeVotes(scenarioId, game, token, handles);
-    return;
-  }
+  const token = game.phaseContext.token;
 
-  if (phase === "trial") {
-    schedulePracticeTrialVotes(scenarioId, game, token, handles);
-    return;
-  }
-
-  if (phase === "discussion" || phase === "night") {
+  if (game.phase === "night") {
+    schedulePracticeNightActions(scenarioId, game, client, token, handles);
     schedulePracticeChats(scenarioId, game, token, handles);
+    return;
+  }
+
+  if (game.phase === "discussion") {
+    schedulePracticeDiscussionActions(scenarioId, game, client, token, handles);
+    schedulePracticeChats(scenarioId, game, token, handles);
+    return;
+  }
+
+  if (game.phase === "vote") {
+    schedulePracticeVoteActions(scenarioId, game, client, token, handles);
+    return;
+  }
+
+  if (game.phase === "defense") {
+    schedulePracticeDefenseActions(scenarioId, game, client, token, handles);
+    return;
+  }
+
+  if (game.phase === "trial") {
+    schedulePracticeTrialVotes(scenarioId, game, client, token, handles);
   }
 }
 
-function schedulePracticeVotes(
+function schedulePracticeNightActions(
   scenarioId: string,
   game: PracticeGame,
+  client: Client,
   token: number,
   handles: NodeJS.Timeout[],
 ): void {
+  const actors = shuffle(
+    Array.from(game.players.values()).filter((player) => player.alive && player.userId !== PRACTICE_VIEWER_ID),
+  );
+  if (actors.length === 0) {
+    return;
+  }
+
+  const delays = buildSortedRandomDelays(actors.length, resolvePhaseWindowMs(game, 1_400, 8_500));
+  actors.forEach((player, index) => {
+    schedulePracticeAction(
+      handles,
+      delays[index],
+      () => game.phase === "night" && game.phaseContext?.token === token,
+      async () => {
+        const prompt = game.getNightPromptForPlayer(player.userId);
+        if (!prompt || game.nightActions.has(player.userId)) {
+          return;
+        }
+
+        const targetId = pickAutomatedTarget(game, player.userId, prompt.action, prompt.targets);
+        if (!targetId) {
+          return;
+        }
+
+        await game.submitNightSelection(client, {
+          kind: "night",
+          actorId: player.userId,
+          action: prompt.action,
+          targetId,
+          token,
+        });
+        console.log(`[web-practice] ${scenarioId} npc ${player.userId} -> ${prompt.action} ${targetId}`);
+      },
+    );
+  });
+}
+
+function schedulePracticeDiscussionActions(
+  scenarioId: string,
+  game: PracticeGame,
+  client: Client,
+  token: number,
+  handles: NodeJS.Timeout[],
+): void {
+  const timeActors = shuffle(
+    Array.from(game.players.values()).filter(
+      (player) =>
+        player.alive &&
+        player.userId !== PRACTICE_VIEWER_ID &&
+        player.timeAdjustUsedOnDay !== game.dayNumber,
+    ),
+  );
+  const timeActor = timeActors[0];
+  if (timeActor && Math.random() < 0.45) {
+    schedulePracticeAction(
+      handles,
+      1_400 + Math.floor(Math.random() * 4_000),
+      () => game.phase === "discussion" && game.phaseContext?.token === token && timeActor.timeAdjustUsedOnDay !== game.dayNumber,
+      async () => {
+        const direction = Math.random() < 0.5 ? "add" : "cut";
+        await game.adjustDiscussionTime(client, timeActor.userId, direction, token);
+        console.log(`[web-practice] ${scenarioId} npc ${timeActor.userId} -> time ${direction}`);
+      },
+    );
+  }
+
+  const pendingArticle = game.pendingArticle;
+  if (pendingArticle && pendingArticle.actorId !== PRACTICE_VIEWER_ID && game.dayNumber >= pendingArticle.publishFromDay) {
+    schedulePracticeAction(
+      handles,
+      2_000 + Math.floor(Math.random() * 4_000),
+      () =>
+        game.phase === "discussion" &&
+        game.phaseContext?.token === token &&
+        Boolean(game.pendingArticle) &&
+        game.pendingArticle?.actorId === pendingArticle.actorId &&
+        game.dayNumber >= (game.pendingArticle?.publishFromDay ?? Number.MAX_SAFE_INTEGER),
+      async () => {
+        await game.publishReporterArticle(client, pendingArticle.actorId);
+        console.log(`[web-practice] ${scenarioId} npc ${pendingArticle.actorId} -> reporter_publish`);
+      },
+    );
+  }
+}
+
+function schedulePracticeVoteActions(
+  scenarioId: string,
+  game: PracticeGame,
+  client: Client,
+  token: number,
+  handles: NodeJS.Timeout[],
+): void {
+  const madam = Array.from(game.players.values()).find(
+    (player) =>
+      player.alive &&
+      player.userId !== PRACTICE_VIEWER_ID &&
+      player.role === "madam" &&
+      !game.pendingSeductionTargetId,
+  );
+  if (madam) {
+    const targets = game.alivePlayers.filter((player) => player.userId !== madam.userId).map((player) => player.userId);
+    const targetId = pickRandom(targets);
+    if (targetId) {
+      schedulePracticeAction(
+        handles,
+        1_200 + Math.floor(Math.random() * 2_000),
+        () => game.phase === "vote" && game.phaseContext?.token === token && !game.pendingSeductionTargetId,
+        async () => {
+          await game.submitNightSelection(client, {
+            kind: "madam",
+            actorId: madam.userId,
+            action: "select",
+            targetId,
+            token,
+          });
+          console.log(`[web-practice] ${scenarioId} npc ${madam.userId} -> madam ${targetId}`);
+        },
+      );
+    }
+  }
+
   const voters = shuffle(
     Array.from(game.players.values()).filter(
       (player) =>
@@ -190,28 +341,70 @@ function schedulePracticeVotes(
     return;
   }
 
-  const delays = buildSortedRandomDelays(voters.length, resolvePhaseWindowMs(game, 1_200, 8_000));
+  const delays = buildSortedRandomDelays(voters.length, resolvePhaseWindowMs(game, 1_500, 7_500));
   voters.forEach((player, index) => {
-    scheduleGuardedPracticeAction(game, handles, "vote", token, delays[index], () => {
-      if (game.dayVotes.has(player.userId)) {
-        return;
-      }
-      const targets = shuffle(
-        Array.from(game.players.values())
-          .filter((candidate) => candidate.alive && candidate.userId !== player.userId)
-          .map((candidate) => candidate.userId),
-      );
-      const targetId = targets[0] ?? player.userId;
-      game.dayVotes.set(player.userId, targetId);
-      (game as any).appendPublicActivityLog(`누군가가 ${game.getPlayerOrThrow(targetId).displayName} 님에게 투표했습니다.`);
-      console.log(`[web-practice] ${scenarioId} npc ${player.userId} -> vote ${targetId}`);
-    });
+    schedulePracticeAction(
+      handles,
+      delays[index],
+      () => game.phase === "vote" && game.phaseContext?.token === token,
+      async () => {
+        if (game.dayVotes.has(player.userId) || game.bulliedToday.has(player.userId)) {
+          return;
+        }
+        const targetId = pickAutomatedVoteTarget(game, player.userId);
+        if (!targetId) {
+          return;
+        }
+        await game.submitVote(client, player.userId, targetId, token);
+        console.log(`[web-practice] ${scenarioId} npc ${player.userId} -> vote ${targetId}`);
+      },
+    );
   });
+}
+
+function schedulePracticeDefenseActions(
+  scenarioId: string,
+  game: PracticeGame,
+  client: Client,
+  token: number,
+  handles: NodeJS.Timeout[],
+): void {
+  const targetId = game.currentTrialTargetId;
+  if (!targetId) {
+    return;
+  }
+  const target = game.getPlayer(targetId);
+  if (!target || !target.alive || target.userId === PRACTICE_VIEWER_ID || target.role !== "terrorist") {
+    return;
+  }
+
+  const choices = game.alivePlayers.filter((player) => player.userId !== target.userId).map((player) => player.userId);
+  const burnTargetId = pickRandom(choices);
+  if (!burnTargetId) {
+    return;
+  }
+
+  schedulePracticeAction(
+    handles,
+    1_000 + Math.floor(Math.random() * 3_000),
+    () => game.phase === "defense" && game.phaseContext?.token === token && !game.pendingTrialBurns.has(target.userId),
+    async () => {
+      await game.submitNightSelection(client, {
+        kind: "terror",
+        actorId: target.userId,
+        action: "burn",
+        targetId: burnTargetId,
+        token,
+      });
+      console.log(`[web-practice] ${scenarioId} npc ${target.userId} -> terror ${burnTargetId}`);
+    },
+  );
 }
 
 function schedulePracticeTrialVotes(
   scenarioId: string,
   game: PracticeGame,
+  client: Client,
   token: number,
   handles: NodeJS.Timeout[],
 ): void {
@@ -229,18 +422,58 @@ function schedulePracticeTrialVotes(
     return;
   }
 
-  const delays = buildSortedRandomDelays(voters.length, resolvePhaseWindowMs(game, 1_200, 8_000));
+  const delays = buildSortedRandomDelays(voters.length, resolvePhaseWindowMs(game, 1_200, 7_500));
   voters.forEach((player, index) => {
-    scheduleGuardedPracticeAction(game, handles, "trial", token, delays[index], () => {
-      if (game.trialVotes.has(player.userId)) {
-        return;
-      }
-      const vote = Math.random() < 0.6 ? "yes" : "no";
-      game.trialVotes.set(player.userId, vote);
-      (game as any).appendPublicActivityLog(vote === "yes" ? "누군가가 찬성에 투표했습니다." : "누군가가 반대에 투표했습니다.");
-      console.log(`[web-practice] ${scenarioId} npc ${player.userId} -> trial ${vote}`);
-    });
+    schedulePracticeAction(
+      handles,
+      delays[index],
+      () => game.phase === "trial" && game.phaseContext?.token === token,
+      async () => {
+        if (game.trialVotes.has(player.userId) || game.bulliedToday.has(player.userId)) {
+          return;
+        }
+        const vote = Math.random() < 0.6 ? "yes" : "no";
+        await game.submitTrialVote(client, player.userId, vote, token);
+        console.log(`[web-practice] ${scenarioId} npc ${player.userId} -> trial ${vote}`);
+      },
+    );
   });
+}
+
+function schedulePracticeAftermath(
+  scenarioId: string,
+  game: PracticeGame,
+  client: Client,
+  handles: NodeJS.Timeout[],
+): void {
+  const choice = game.pendingAftermathChoice;
+  if (!choice || choice.actorId === PRACTICE_VIEWER_ID) {
+    return;
+  }
+
+  const targetId = pickRandom(choice.targetIds);
+  if (!targetId) {
+    return;
+  }
+
+  schedulePracticeAction(
+    handles,
+    1_000 + Math.floor(Math.random() * 2_500),
+    () =>
+      Boolean(game.pendingAftermathChoice) &&
+      game.pendingAftermathChoice?.token === choice.token &&
+      game.pendingAftermathChoice?.actorId === choice.actorId,
+    async () => {
+      await game.submitNightSelection(client, {
+        kind: "aftermath",
+        actorId: choice.actorId,
+        action: choice.action,
+        targetId,
+        token: choice.token,
+      });
+      console.log(`[web-practice] ${scenarioId} npc ${choice.actorId} -> aftermath ${choice.action} ${targetId}`);
+    },
+  );
 }
 
 function schedulePracticeChats(
@@ -281,41 +514,87 @@ function schedulePracticeChats(
     if (maxMessages <= 0) {
       return;
     }
+
     const speakers = shuffle([...plan.speakers]).slice(0, maxMessages);
     const delays = buildSortedRandomDelays(maxMessages, resolvePhaseWindowMs(game, 900, 6_000));
     speakers.forEach((speakerId, index) => {
       const content = plan.lines[Math.floor(Math.random() * plan.lines.length)];
-      scheduleGuardedPracticeAction(game, handles, game.phase, token, delays[index], () => {
-        if (!game.canWriteChat(speakerId, plan.channel)) {
-          return;
-        }
-        game.sendChat(speakerId, plan.channel, content);
-        console.log(`[web-practice] ${scenarioId} npc ${speakerId} -> chat ${plan.channel}`);
-      });
+      schedulePracticeAction(
+        handles,
+        delays[index],
+        () => game.phaseContext?.token === token && game.canWriteChat(speakerId, plan.channel),
+        () => {
+          game.sendChat(speakerId, plan.channel, content);
+          console.log(`[web-practice] ${scenarioId} npc ${speakerId} -> chat ${plan.channel}`);
+        },
+      );
     });
   });
 }
 
-function scheduleGuardedPracticeAction(
-  game: PracticeGame,
+function schedulePracticeAction(
   handles: NodeJS.Timeout[],
-  phase: PracticeGame["phase"],
-  token: number,
   delayMs: number,
-  run: () => void,
+  shouldRun: () => boolean,
+  run: () => Promise<void> | void,
 ): void {
   handles.push(
     setTimeout(() => {
-      if (game.phase !== phase || (game.phaseContext?.token ?? -1) !== token) {
+      if (!shouldRun()) {
         return;
       }
-      try {
-        run();
-      } catch (error) {
+
+      Promise.resolve(run()).catch((error) => {
         console.error("[web-practice] npc action failed", error);
-      }
+      });
     }, delayMs),
   );
+}
+
+function pickAutomatedTarget(
+  game: PracticeGame,
+  actorId: string,
+  action: string,
+  targets: string[],
+): string | null {
+  let candidates = [...targets];
+  if (candidates.length === 0) {
+    return null;
+  }
+
+  if (action !== "doctorProtect") {
+    const withoutSelf = candidates.filter((targetId) => targetId !== actorId);
+    if (withoutSelf.length > 0) {
+      candidates = withoutSelf;
+    }
+  }
+
+  if (action === "mafiaKill" || action === "beastKill") {
+    const nonMafia = candidates.filter((targetId) => {
+      const player = game.getPlayer(targetId);
+      return player && player.role !== "mafia" && player.role !== "spy" && player.role !== "beastman" && player.role !== "madam";
+    });
+    if (nonMafia.length > 0) {
+      candidates = nonMafia;
+    }
+  }
+
+  return pickRandom(candidates);
+}
+
+function pickAutomatedVoteTarget(game: PracticeGame, actorId: string): string | null {
+  let candidates = game.alivePlayers.filter((player) => player.userId !== actorId).map((player) => player.userId);
+  if (candidates.length === 0) {
+    candidates = game.alivePlayers.map((player) => player.userId);
+  }
+  return pickRandom(candidates);
+}
+
+function pickRandom<T>(items: T[]): T | null {
+  if (items.length === 0) {
+    return null;
+  }
+  return items[Math.floor(Math.random() * items.length)];
 }
 
 function resolvePhaseWindowMs(game: PracticeGame, minimumMs: number, maximumMs: number): number {

@@ -62,6 +62,7 @@ export interface DashboardStatePayload {
   viewer: {
     userId: string;
     displayName: string;
+    role: PlayerState["role"];
     roleLabel: string;
     teamLabel: string;
     roleSummary: string;
@@ -149,6 +150,7 @@ export function buildDashboardState(
     viewer: {
       userId,
       displayName: player.displayName,
+      role: player.role,
       roleLabel: getRoleLabel(player.role),
       teamLabel: getTeamLabel(player.role),
       roleSummary: getRoleSummary(player.role, game.ruleset),

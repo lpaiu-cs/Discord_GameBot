@@ -404,17 +404,6 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         height: min(480px, calc(100dvh - 200px));
       }
 
-      body.keyboard-open .chat-shell {
-        height: min(480px, calc(100dvh - 120px));
-      }
-
-      body.keyboard-open .shell {
-        padding-bottom: 24px !important;
-      }
-      body.keyboard-open .mobile-dock {
-        display: none !important;
-      }
-
       @media (prefers-reduced-motion: reduce) {
         *, ::before, ::after {
           animation-duration: 0.01ms !important;
@@ -1670,6 +1659,28 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       let pointerReleaseTimer = null;
       let pendingRenderState = null;
 
+      function hasFocusedChatInput() {
+        const active = document.activeElement;
+        if (!(active instanceof HTMLInputElement)) {
+          return false;
+        }
+        return (
+          active.name === "content" &&
+          active.value.length > 0 &&
+          active.form instanceof HTMLFormElement &&
+          active.form.classList.contains("chat-form")
+        );
+      }
+
+      function flushPendingRender() {
+        if (pointerRenderLock || hasFocusedChatInput() || !pendingRenderState) {
+          return;
+        }
+        const nextState = pendingRenderState;
+        pendingRenderState = null;
+        renderNow(nextState);
+      }
+
       function holdRenderDuringPointer() {
         pointerRenderLock = true;
         if (pointerReleaseTimer) {
@@ -1685,11 +1696,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         pointerReleaseTimer = setTimeout(() => {
           pointerReleaseTimer = null;
           pointerRenderLock = false;
-          if (pendingRenderState) {
-            const nextState = pendingRenderState;
-            pendingRenderState = null;
-            renderNow(nextState);
-          }
+          flushPendingRender();
         }, 0);
       }
 
@@ -1703,6 +1710,9 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       }, { capture: true });
       document.addEventListener("pointerup", releaseRenderAfterPointer, true);
       document.addEventListener("pointercancel", releaseRenderAfterPointer, true);
+      document.addEventListener("focusout", () => {
+        setTimeout(flushPendingRender, 0);
+      }, true);
       window.addEventListener("blur", releaseRenderAfterPointer);
 
       function showPhaseOverlay(phaseName, label) {
@@ -1851,10 +1861,14 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
             return;
           }
 
+          if (node.clientHeight <= 0) {
+            return;
+          }
+
           const distanceFromBottom = node.scrollHeight - (node.scrollTop + node.clientHeight);
           snapshot[channel] = {
             scrollTop: node.scrollTop,
-            nearBottom: distanceFromBottom <= 28,
+            nearBottom: distanceFromBottom <= 72,
           };
         });
         return snapshot;
@@ -2063,7 +2077,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         updateHtml(document.getElementById("hero-meta"), [
           '<div class="phase-chip phase-chip--' + phase + '">' + escapeHtml(phaseDisplayText(state)) + '</div>',
     '<div class="meta-chip role-chip role-chip--' + team + '"><strong>' + escapeHtml(state.viewer.roleLabel) + '</strong></div>',
-    '<div class="timer-chip"><strong data-live-deadline>' + escapeHtml(formatDeadline(state.room.deadlineAt)) + '</strong><div class="timer-bar" data-timer-total="' + (state.room.deadlineAt ? 300 : 0) + '"><div class="timer-bar-fill" data-live-timer-fill></div></div></div>',
+    '<div class="timer-chip"><strong data-live-deadline></strong><div class="timer-bar" data-timer-total="' + (state.room.deadlineAt ? 300 : 0) + '"><div class="timer-bar-fill" data-live-timer-fill></div></div></div>',
         ].join(""));
 }
 let chatSeenCount = { public: 0, secret: 0, logs: 0 };
@@ -2236,15 +2250,16 @@ function actionControl(control) {
         \`;
       }
 
-      function chatSection(state, viewerId, chat, withHeading) {
-        const messages =
-          chat.messages.length > 0
-            ? chat.messages
-                .map((message, index) => chatMessage(state, viewerId, message, index > 0 ? chat.messages[index - 1] : null))
-                .join("")
-            : '<div class="line-item muted">아직 메시지가 없습니다.</div>';
+      function chatMessagesHtml(state, viewerId, chat) {
+        return chat.messages.length > 0
+          ? chat.messages
+              .map((message, index) => chatMessage(state, viewerId, message, index > 0 ? chat.messages[index - 1] : null))
+              .join("")
+          : '<div class="line-item muted">아직 메시지가 없습니다.</div>';
+      }
 
-        const form = chat.canWrite
+      function chatFooterHtml(chat) {
+        return chat.canWrite
           ? \`
               <form class="chat-form" data-channel="\${escapeHtml(chat.channel)}">
                 <input name="content" maxlength="500" placeholder="\${escapeHtml(chat.title)} 메시지 입력" />
@@ -2252,7 +2267,9 @@ function actionControl(control) {
               </form>
             \`
           : '<div class="notice" style="text-align: center; color: var(--muted); background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1);">🔒 현재 이 채널에 쓸 수 없습니다.</div>';
+      }
 
+      function chatSection(state, viewerId, chat, withHeading) {
         const heading = withHeading
           ? \`
               <div class="panel-head">
@@ -2268,8 +2285,8 @@ function actionControl(control) {
           <div class="\${withHeading ? "secret-chat" : ""}\${channelTheme}">
             \${heading}
             <div class="chat-shell">
-              <div class="chat-list" data-channel="\${escapeHtml(chat.channel)}">\${messages}</div>
-              <div class="footer">\${form}</div>
+              <div class="chat-list" data-channel="\${escapeHtml(chat.channel)}">\${chatMessagesHtml(state, viewerId, chat)}</div>
+              <div class="footer">\${chatFooterHtml(chat)}</div>
             </div>
           </div>
         \`;
@@ -2277,6 +2294,258 @@ function actionControl(control) {
 
       function sectionClass(sectionId) {
         return \`panel section-panel \${sectionId === activeSection ? "is-active" : ""}\`;
+      }
+
+      function dashboardScaffoldHtml() {
+        return \`
+          <div class="dashboard-grid" data-dashboard-grid>
+            <section class="panel section-panel span-4" data-section="state">
+              <div class="panel-head">
+                <div>
+                  <h2>현재 상태</h2>
+                </div>
+              </div>
+              <div class="panel-body viewer-stack" data-section-body="state"></div>
+            </section>
+
+            <section class="panel section-panel span-8" data-section="public">
+              <div class="panel-head">
+                <div>
+                  <h2>공개 채팅</h2>
+                </div>
+              </div>
+              <div class="panel-body" data-section-body="public"></div>
+            </section>
+
+            <section class="panel section-panel span-5" data-section="actions">
+              <div class="panel-head">
+                <div>
+                  <h2>개인 행동</h2>
+                </div>
+              </div>
+              <div class="panel-body" data-section-body="actions"></div>
+            </section>
+
+            <section class="panel section-panel span-7" data-section="secret">
+              <div class="panel-head">
+                <div>
+                  <h2>비밀 채팅</h2>
+                </div>
+              </div>
+              <div class="panel-body secret-stack" data-section-body="secret"></div>
+            </section>
+
+            <section class="panel section-panel span-12" data-section="logs">
+              <div class="panel-head">
+                <div>
+                  <h2>개인 기록</h2>
+                </div>
+              </div>
+              <div class="panel-body" data-section-body="logs"></div>
+            </section>
+          </div>
+        \`;
+      }
+
+      function ensureDashboardScaffold() {
+        const app = document.getElementById("app");
+        if (!(app instanceof HTMLElement)) {
+          return null;
+        }
+        if (!app.querySelector("[data-dashboard-grid]")) {
+          app.innerHTML = dashboardScaffoldHtml();
+        }
+        return app;
+      }
+
+      function getSectionNode(sectionId) {
+        return document.querySelector('[data-section="' + sectionId + '"]');
+      }
+
+      function getSectionBody(sectionId) {
+        const section = getSectionNode(sectionId);
+        if (!(section instanceof HTMLElement)) {
+          return null;
+        }
+        const body = section.querySelector('[data-section-body="' + sectionId + '"]');
+        return body instanceof HTMLElement ? body : null;
+      }
+
+      function updateSectionFrame(sectionId, spanClass, bodyClassName) {
+        const section = getSectionNode(sectionId);
+        if (section instanceof HTMLElement) {
+          updateClass(section, sectionClass(sectionId) + " " + spanClass);
+        }
+        const body = getSectionBody(sectionId);
+        if (body instanceof HTMLElement) {
+          updateClass(body, bodyClassName);
+        }
+        return body;
+      }
+
+      function buildEndedSummaryHtml(state) {
+        if (!state.endedSummary) {
+          return "";
+        }
+        return \`
+          <div class="viewer-card endgame-card\${state.endedSummary.viewerResultLabel === "승리" ? " endgame-card--win" : state.endedSummary.viewerResultLabel === "패배" ? " endgame-card--lose" : ""}">
+            <strong>최종 결과</strong>
+            <div>\${escapeHtml(state.endedSummary.winnerLabel ?? state.endedSummary.reason ?? "게임 종료")}</div>
+            \${state.endedSummary.reason && state.endedSummary.reason !== state.endedSummary.winnerLabel ? \`<div class="footer">\${escapeHtml(state.endedSummary.reason)}</div>\` : ""}
+            \${state.endedSummary.viewerResultLabel ? \`<div class="footer">내 결과: \${escapeHtml(state.endedSummary.viewerResultLabel)}</div>\` : ""}
+          </div>
+          <div class="reveal-grid">\${state.endedSummary.revealedPlayers.map((revealed) => revealCard(state, revealed)).join("")}</div>
+        \`;
+      }
+
+      function renderStateSection(state) {
+        const body = updateSectionFrame("state", "span-4", "panel-body viewer-stack");
+        if (!(body instanceof HTMLElement)) {
+          return;
+        }
+        const team = teamClass(state);
+        const roleIcon = ROLE_ICONS.find((role) => role.label === state.viewer.roleLabel);
+        updateHtml(body, \`
+          \${!state.viewer.alive ? '<div class="spectator-banner">관전 중입니다</div>' : ""}
+          <div class="viewer-card viewer-card--\${team}\${!state.viewer.alive ? " viewer-card--dead" : ""}">
+            <div style="display:flex;gap:12px;align-items:flex-start;">
+              \${roleIcon ? \`<img src="\${roleIconUrl(roleIcon.key)}" alt="" style="width:42px;height:42px;border-radius:10px;object-fit:contain;flex-shrink:0;opacity:0.92;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));" />\` : ""}
+              <div>
+                <strong>내 정보</strong>
+                <div>직업: \${escapeHtml(state.viewer.roleLabel)}</div>
+              </div>
+            </div>
+            <div class="muted" style="margin-top: 8px;">\${escapeHtml(state.viewer.roleSummary)}</div>
+            \${state.viewer.loverName ? \`<div class="footer">연인: \${escapeHtml(state.viewer.loverName)}</div>\` : ""}
+            \${state.viewer.deadReason ? \`<div class="footer">사망 사유: \${escapeHtml(state.viewer.deadReason)}</div>\` : ""}
+            \${state.viewer.ascended ? '<div class="footer">성불 상태</div>' : ""}
+          </div>
+          <div class="mini-grid">
+            <div class="mini-card">
+              <strong>남은 시간</strong>
+              <div data-live-deadline></div>
+            </div>
+            <div class="mini-card">
+              <strong>행동</strong>
+              <div>\${actionableControlCount(state)}개 가능</div>
+            </div>
+          </div>
+          <div class="seat-grid">\${state.room.seats.map((seat) => seatCard(state, seat)).join("")}</div>
+          \${state.room.currentTrialTargetName ? \`<div class="line-item"><strong>현재 대상</strong><div>\${escapeHtml(state.room.currentTrialTargetName)}</div></div>\` : ""}
+          \${buildEndedSummaryHtml(state)}
+        \`);
+      }
+
+      function renderActionsSection(state) {
+        const body = updateSectionFrame("actions", "span-5", "panel-body");
+        if (!(body instanceof HTMLElement)) {
+          return;
+        }
+        const notices = state.actions.notices.map((notice) => \`<div class="notice">\${escapeHtml(notice)}</div>\`).join("");
+        const controls = state.actions.controls.map(actionControl).join("");
+        updateHtml(body, \`<div class="control-list">\${notices}\${controls}</div>\`);
+      }
+
+      function ensureChatRoot(root, chat, withHeading) {
+        if (!(root instanceof HTMLElement)) {
+          return null;
+        }
+
+        const mode = withHeading ? "secret" : "public";
+        if (root.dataset.chatMode !== mode) {
+          root.dataset.chatMode = mode;
+          root.innerHTML = withHeading
+            ? '<div class="panel-head"><div><h3></h3></div></div><div class="chat-shell"><div class="chat-list"></div><div class="footer"></div></div>'
+            : '<div class="chat-shell"><div class="chat-list"></div><div class="footer"></div></div>';
+        }
+
+        if (withHeading) {
+          updateClass(root, "secret-chat secret-chat--" + chat.channel);
+          const heading = root.querySelector("h3");
+          if (heading instanceof HTMLElement) {
+            heading.textContent = chat.title;
+          }
+        } else if (root.className) {
+          root.className = "";
+        }
+
+        const list = root.querySelector(".chat-list");
+        if (list instanceof HTMLElement) {
+          list.dataset.channel = chat.channel;
+        }
+        const footer = root.querySelector(".footer");
+        return {
+          list: list instanceof HTMLElement ? list : null,
+          footer: footer instanceof HTMLElement ? footer : null,
+        };
+      }
+
+      function syncChatRoot(root, state, viewerId, chat, withHeading) {
+        const nodes = ensureChatRoot(root, chat, withHeading);
+        if (!nodes) {
+          return;
+        }
+        if (nodes.list) {
+          updateHtml(nodes.list, chatMessagesHtml(state, viewerId, chat));
+        }
+        if (nodes.footer) {
+          updateHtml(nodes.footer, chatFooterHtml(chat));
+        }
+      }
+
+      function renderPublicSection(state) {
+        const body = updateSectionFrame("public", "span-8", "panel-body");
+        if (!(body instanceof HTMLElement)) {
+          return;
+        }
+        let chatRoot = body.querySelector('[data-chat-root="public"]');
+        if (!(chatRoot instanceof HTMLElement)) {
+          body.innerHTML = '<div data-chat-root="public"></div>';
+          chatRoot = body.querySelector('[data-chat-root="public"]');
+        }
+        syncChatRoot(chatRoot, state, state.viewer.userId, state.publicChat, false);
+      }
+
+      function renderSecretSection(state) {
+        const body = updateSectionFrame("secret", "span-7", "panel-body secret-stack");
+        if (!(body instanceof HTMLElement)) {
+          return;
+        }
+        if (state.secretChats.length === 0) {
+          delete body.dataset.secretChannels;
+          updateHtml(body, '<div class="line-item muted">현재 접근 가능한 비밀 채팅이 없습니다.</div>');
+          return;
+        }
+
+        const secretChannels = state.secretChats.map((chat) => chat.channel).join(",");
+        if (body.dataset.secretChannels !== secretChannels) {
+          body.dataset.secretChannels = secretChannels;
+          body.innerHTML = state.secretChats
+            .map((chat) => '<div data-secret-chat-channel="' + chat.channel + '"></div>')
+            .join("");
+        }
+
+        state.secretChats.forEach((chat) => {
+          const chatRoot = body.querySelector('[data-secret-chat-channel="' + chat.channel + '"]');
+          syncChatRoot(chatRoot, state, state.viewer.userId, chat, true);
+        });
+      }
+
+      function renderLogsSection(state) {
+        const body = updateSectionFrame("logs", "span-12", "panel-body");
+        if (!(body instanceof HTMLElement)) {
+          return;
+        }
+        const privateLines =
+          state.systemLog.privateLines.length > 0
+            ? state.systemLog.privateLines
+                .map(
+                  (line) =>
+                    \`<div class="line-item success"><strong>\${formatClock(line.createdAt)}</strong><div>\${escapeHtml(line.line)}</div></div>\`,
+                )
+                .join("")
+            : '<div class="line-item muted">개인 결과가 아직 없습니다.</div>';
+        updateHtml(body, '<div class="line-list">' + privateLines + '</div>');
       }
 
       function revealCard(state, revealed) {
@@ -2384,7 +2653,7 @@ function actionControl(control) {
       }
 
       function render(state) {
-        if (pointerRenderLock) {
+        if (pointerRenderLock || hasFocusedChatInput()) {
           pendingRenderState = state;
           return;
         }
@@ -2416,119 +2685,14 @@ function actionControl(control) {
         const actionDrafts = captureActionDraftState();
         const chatScrollState = captureChatScrollState();
         ensureActiveSection(state);
+        ensureDashboardScaffold();
         renderHero(state);
         renderMobileDock(state);
-
-        const team = teamClass(state);
-        const notices = state.actions.notices.map((notice) => \`<div class="notice">\${escapeHtml(notice)}</div>\`).join("");
-        const controls = state.actions.controls.map(actionControl).join("");
-        const privateLines =
-          state.systemLog.privateLines.length > 0
-            ? state.systemLog.privateLines
-                .map(
-                  (line) =>
-                    \`<div class="line-item success"><strong>\${formatClock(line.createdAt)}</strong><div>\${escapeHtml(line.line)}</div></div>\`,
-                )
-                .join("")
-            : '<div class="line-item muted">개인 결과가 아직 없습니다.</div>';
-        const secretChats =
-          state.secretChats.length > 0
-            ? state.secretChats.map((chat) => chatSection(state, state.viewer.userId, chat, true)).join("")
-            : '<div class="line-item muted">현재 접근 가능한 비밀 채팅이 없습니다.</div>';
-        const endedSummary = state.endedSummary
-          ? \`
-              <div class="viewer-card endgame-card\${state.endedSummary.viewerResultLabel === "승리" ? " endgame-card--win" : state.endedSummary.viewerResultLabel === "패배" ? " endgame-card--lose" : ""}">
-                <strong>최종 결과</strong>
-                <div>\${escapeHtml(state.endedSummary.winnerLabel ?? state.endedSummary.reason ?? "게임 종료")}</div>
-                \${state.endedSummary.reason && state.endedSummary.reason !== state.endedSummary.winnerLabel ? \`<div class="footer">\${escapeHtml(state.endedSummary.reason)}</div>\` : ""}
-                \${state.endedSummary.viewerResultLabel ? \`<div class="footer">내 결과: \${escapeHtml(state.endedSummary.viewerResultLabel)}</div>\` : ""}
-              </div>
-              <div class="reveal-grid">\${state.endedSummary.revealedPlayers.map((revealed) => revealCard(state, revealed)).join("")}</div>
-            \`
-          : "";
-
-        const newAppHtml = \`
-          <div class="dashboard-grid">
-            <section class="\${sectionClass("state")} span-4" data-section="state">
-              <div class="panel-head">
-                <div>
-                  <h2>현재 상태</h2>
-                </div>
-              </div>
-              <div class="panel-body viewer-stack">
-                \${!state.viewer.alive ? '<div class="spectator-banner">관전 중입니다</div>' : ""}
-                <div class="viewer-card viewer-card--\${team}\${!state.viewer.alive ? " viewer-card--dead" : ""}">
-                  <div style="display:flex;gap:12px;align-items:flex-start;">
-                    \${(() => { const found = ROLE_ICONS.find(r => r.label === state.viewer.roleLabel); return found ? \`<img src="\${roleIconUrl(found.key)}" alt="" style="width:42px;height:42px;border-radius:10px;object-fit:contain;flex-shrink:0;opacity:0.92;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));" />\` : ""; })()}
-                    <div>
-                      <strong>내 정보</strong>
-                      <div>직업: \${escapeHtml(state.viewer.roleLabel)}</div>
-                    </div>
-                  </div>
-                  <div class="muted" style="margin-top: 8px;">\${escapeHtml(state.viewer.roleSummary)}</div>
-                  \${state.viewer.loverName ? \`<div class="footer">연인: \${escapeHtml(state.viewer.loverName)}</div>\` : ""}
-                  \${state.viewer.deadReason ? \`<div class="footer">사망 사유: \${escapeHtml(state.viewer.deadReason)}</div>\` : ""}
-                  \${state.viewer.ascended ? '<div class="footer">성불 상태</div>' : ""}
-                </div>
-                <div class="mini-grid">
-                  <div class="mini-card">
-                    <strong>남은 시간</strong>
-                    <div data-live-deadline>\${escapeHtml(formatDeadline(state.room.deadlineAt))}</div>
-                  </div>
-                  <div class="mini-card">
-                    <strong>행동</strong>
-                    <div>\${actionableControlCount(state)}개 가능</div>
-                  </div>
-                </div>
-                <div class="seat-grid">\${state.room.seats.map((seat) => seatCard(state, seat)).join("")}</div>
-                \${state.room.currentTrialTargetName ? \`<div class="line-item"><strong>현재 대상</strong><div>\${escapeHtml(state.room.currentTrialTargetName)}</div></div>\` : ""}
-                \${endedSummary}
-              </div>
-            </section>
-
-            <section class="\${sectionClass("public")} span-8" data-section="public">
-              <div class="panel-head">
-                <div>
-                  <h2>공개 채팅</h2>
-                </div>
-              </div>
-              <div class="panel-body">\${chatSection(state, state.viewer.userId, state.publicChat, false)}</div>
-            </section>
-
-            <section class="\${sectionClass("actions")} span-5" data-section="actions">
-              <div class="panel-head">
-                <div>
-                  <h2>개인 행동</h2>
-                </div>
-              </div>
-              <div class="panel-body">
-                <div class="control-list">\${notices}\${controls}</div>
-              </div>
-            </section>
-
-            <section class="\${sectionClass("secret")} span-7" data-section="secret">
-              <div class="panel-head">
-                <div>
-                  <h2>비밀 채팅</h2>
-                </div>
-              </div>
-              <div class="panel-body secret-stack">\${secretChats}</div>
-            </section>
-
-            <section class="\${sectionClass("logs")} span-12" data-section="logs">
-              <div class="panel-head">
-                <div>
-                  <h2>개인 기록</h2>
-                </div>
-              </div>
-              <div class="panel-body">
-                <div class="line-list">\${privateLines}</div>
-              </div>
-            </section>
-          </div>
-        \`;
-
-        updateHtml(document.getElementById("app"), newAppHtml);
+        renderStateSection(state);
+        renderPublicSection(state);
+        renderActionsSection(state);
+        renderSecretSection(state);
+        renderLogsSection(state);
 
         restoreChatDraftState(focusedChat);
         restoreActionDraftState(actionDrafts);
@@ -2811,17 +2975,6 @@ function actionControl(control) {
          if (!document.hidden && !ws) connectWebSocket();
          schedulePolling();
       });
-
-      if (window.visualViewport) {
-         const initialHeight = window.visualViewport.height;
-         window.visualViewport.addEventListener("resize", () => {
-            if (window.visualViewport.height < initialHeight * 0.85) {
-               document.body.classList.add("keyboard-open");
-            } else {
-               document.body.classList.remove("keyboard-open");
-            }
-         });
-      }
 
       activeSection = pickDefaultSection(currentState);
       syncServerClock(initialState.serverNow);
