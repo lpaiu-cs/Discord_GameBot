@@ -491,15 +491,18 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
 
       .chat-bubble--system {
         max-width: min(88%, 540px);
-        padding: 2px 8px;
-        border: 0;
-        border-radius: 0;
-        background: transparent;
-        color: #aeb8c8;
-        font-size: 0.74rem;
+        margin: 8px 0;
+        padding: 6px 16px;
+        border: 1px solid rgba(255, 210, 120, 0.25);
+        border-radius: 12px;
+        background: rgba(30, 25, 20, 0.75);
+        color: #ffe4b5;
+        font-size: 0.82rem;
+        font-weight: 700;
+        font-style: italic;
         line-height: 1.45;
         text-align: center;
-        box-shadow: none;
+        box-shadow: 0 4px 16px rgba(0,0,0,0.5);
       }
 
       .chat-meta,
@@ -691,6 +694,14 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       @keyframes badge-pulse {
         0%, 100% { transform: scale(1); }
         50% { transform: scale(1.15); }
+      }
+
+      .dock-badge--dot {
+        min-width: 10px;
+        height: 10px;
+        top: 6px;
+        right: 18px;
+        padding: 0;
       }
 
       .dock-button.is-active {
@@ -1337,6 +1348,47 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         pointer-events: none;
       }
 
+      /* ── Splash Overlay ── */
+      .phase-overlay {
+        position: fixed;
+        inset: 0;
+        z-index: 999;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0, 0, 0, 0.85);
+        backdrop-filter: blur(8px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.4s ease;
+      }
+      .phase-overlay.is-active {
+        opacity: 1;
+      }
+      .phase-overlay img {
+        width: 120px;
+        height: 120px;
+        filter: drop-shadow(0 0 16px rgba(255,255,255,0.4));
+        animation: splash-icon 0.8s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+      }
+      .phase-overlay h2 {
+        margin-top: 20px;
+        font-size: 2rem;
+        font-weight: 800;
+        letter-spacing: 2px;
+        text-shadow: 0 4px 12px rgba(0,0,0,0.8);
+        animation: splash-text 0.8s ease-out;
+      }
+      @keyframes splash-icon {
+        0% { transform: scale(0.5); opacity: 0; }
+        100% { transform: scale(1); opacity: 1; }
+      }
+      @keyframes splash-text {
+        0% { transform: translateY(20px); opacity: 0; }
+        100% { transform: translateY(0); opacity: 1; }
+      }
+
       @media (min-width: 960px) {
         .shell {
           width: min(1280px, calc(100vw - 44px));
@@ -1496,6 +1548,128 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       function roleIconUrl(key) {
         return "/resource/roles/" + key + "_icon.png";
       }
+
+      /* ── Advanced UI/UX: Audio Manager ── */
+      const AudioManager = {
+        ctx: null,
+        buffers: {},
+        bgmNode: null,
+        currentBgmUrl: null,
+        
+        init() {
+          if (!this.ctx) {
+            const AudioContext = window.AudioContext || window.webkitAudioContext;
+            this.ctx = new AudioContext();
+          }
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+        },
+        async load(url) {
+          if (this.buffers[url]) return this.buffers[url];
+          try {
+            const res = await fetch(url, { cache: "force-cache" });
+            const arrayBuffer = await res.arrayBuffer();
+            if (!this.ctx) this.init();
+            const audioBuffer = await this.ctx.decodeAudioData(arrayBuffer);
+            this.buffers[url] = audioBuffer;
+            return audioBuffer;
+          } catch(e) { return null; }
+        },
+        playSfx(url) {
+          try {
+            this.init();
+            this.load(url).then(buf => {
+              if (!buf) return;
+              const source = this.ctx.createBufferSource();
+              source.buffer = buf;
+              const gain = this.ctx.createGain();
+              gain.gain.value = 0.5;
+              source.connect(gain);
+              gain.connect(this.ctx.destination);
+              source.start();
+            });
+          } catch(e) {}
+        },
+        playBgm(url) {
+          if (this.currentBgmUrl === url) return;
+          try {
+            this.init();
+            this.currentBgmUrl = url;
+            this.load(url).then(buf => {
+              if (!buf || this.currentBgmUrl !== url) return;
+              
+              const oldNode = this.bgmNode;
+              
+              const source = this.ctx.createBufferSource();
+              source.buffer = buf;
+              source.loop = true;
+              
+              const gain = this.ctx.createGain();
+              gain.gain.value = 0.0;
+              source.connect(gain);
+              gain.connect(this.ctx.destination);
+              source.start();
+              
+              // Crossfade
+              const now = this.ctx.currentTime;
+              gain.gain.linearRampToValueAtTime(0.4, now + 1.0);
+              
+              this.bgmNode = { source, gain };
+              
+              if (oldNode) {
+                oldNode.gain.gain.linearRampToValueAtTime(0.0, now + 1.0);
+                setTimeout(() => {
+                  try { oldNode.source.stop(); } catch(e){}
+                }, 1000);
+              }
+            });
+          } catch(e) {}
+        }
+      };
+
+      setTimeout(() => {
+        AudioManager.load("/resource/audio/bgm_day.wav");
+        AudioManager.load("/resource/audio/bgm_night.wav");
+        AudioManager.load("/resource/audio/bgm_vote.wav");
+        AudioManager.load("/resource/audio/fanfare.wav");
+        AudioManager.load("/resource/audio/click.wav");
+        AudioManager.load("/resource/audio/action.wav");
+        AudioManager.load("/resource/audio/tick.wav");
+      }, 500);
+
+      document.body.addEventListener("pointerdown", (e) => {
+         if (e.target.closest('button, .action-grid-cell, .memo-role-cell, .dock-button')) {
+            AudioManager.playSfx("/resource/audio/click.wav");
+         }
+      }, { capture: true });
+
+      function showPhaseOverlay(phaseName, label) {
+         let icon = "/resource/images/sun_icon.svg";
+         if (phaseName === "night") icon = "/resource/images/moon_icon.svg";
+         if (phaseName === "vote" || phaseName === "trial") icon = "/resource/images/gavel_icon.svg";
+         
+         const html = \`<div class="phase-overlay" id="phaseOverlay">
+             <img src="\${icon}" />
+             <h2>\${escapeHtml(label)}</h2>
+         </div>\`;
+         const existing = document.getElementById("phaseOverlay");
+         if (existing) existing.remove();
+         document.body.insertAdjacentHTML('beforeend', html);
+         
+         requestAnimationFrame(() => {
+             const el = document.getElementById("phaseOverlay");
+             if (el) {
+                 el.classList.add('is-active');
+                 setTimeout(() => {
+                    el.classList.remove('is-active');
+                    setTimeout(() => el.remove(), 400);
+                 }, 1800);
+             }
+         });
+      }
+
+      let currentPhaseStr = initialState.room.phase;
       let currentState = initialState;
       let sinceVersion = initialState.version;
       let pollTimer = null;
@@ -1571,7 +1745,12 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
           }
         });
 
-        /* Timer chip urgency */
+        /* Timer chip urgency and tick sound */
+        if (remainingSec <= 10 && remainingSec > 0 && window.lastTickSec !== remainingSec) {
+           window.lastTickSec = remainingSec;
+           try { AudioManager.playSfx("/resource/audio/tick.wav"); } catch(e){}
+        }
+
         document.querySelectorAll(".timer-chip").forEach((chip) => {
           chip.classList.toggle("is-critical", remainingSec > 0 && remainingSec <= 10);
           chip.classList.toggle("is-urgent", remainingSec > 10 && remainingSec <= 30);
@@ -1763,35 +1942,45 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
         heroEl.className = "hero hero--" + phase;
 
         document.getElementById("hero-meta").innerHTML = [
-          \`<div class="phase-chip phase-chip--\${phase}">\${escapeHtml(phaseDisplayText(state))}</div>\`,
-          \`<div class="meta-chip role-chip role-chip--\${team}"><strong>\${escapeHtml(state.viewer.roleLabel)}</strong></div>\`,
-          \`<div class="timer-chip"><strong data-live-deadline>\${escapeHtml(formatDeadline(state.room.deadlineAt))}</strong><div class="timer-bar" data-timer-total="\${state.room.deadlineAt ? 300 : 0}"><div class="timer-bar-fill" data-live-timer-fill></div></div></div>\`,
+          `<div class="phase-chip phase-chip--${phase}">${escapeHtml(phaseDisplayText(state))}</div>`,
+          `<div class="meta-chip role-chip role-chip--${team}"><strong>${escapeHtml(state.viewer.roleLabel)}</strong></div>`,
+          `<div class="timer-chip"><strong data-live-deadline>${escapeHtml(formatDeadline(state.room.deadlineAt))}</strong><div class="timer-bar" data-timer-total="${state.room.deadlineAt ? 300 : 0}"><div class="timer-bar-fill" data-live-timer-fill></div></div></div>`,
         ].join("");
       }
 
+      let chatSeenCount = { public: 0, secret: 0, logs: 0 };
       function renderMobileDock(state) {
-        const counts = {
-          state: "",
-          public: state.publicChat.messages.length > 0 ? String(state.publicChat.messages.length) : "",
-          actions: actionableControlCount(state) > 0 ? String(actionableControlCount(state)) : "",
-          secret: state.secretChats.length > 0 ? String(state.secretChats.length) : "",
-          logs: state.systemLog.privateLines.length > 0 ? String(state.systemLog.privateLines.length) : "",
+        if (activeSection === "public") chatSeenCount.public = state.publicChat.messages.length;
+        if (activeSection === "secret") chatSeenCount.secret = state.secretChats.reduce((acc, c) => acc + c.messages.length, 0);
+        if (activeSection === "logs") chatSeenCount.logs = state.systemLog.privateLines.length;
+
+        const currentSecretCount = state.secretChats.reduce((acc, c) => acc + c.messages.length, 0);
+
+        const unread = {
+          state: false,
+          actions: false,
+          public: state.publicChat.messages.length > chatSeenCount.public,
+          secret: currentSecretCount > chatSeenCount.secret,
+          logs: state.systemLog.privateLines.length > chatSeenCount.logs,
         };
 
-        document.getElementById("mobile-dock-root").innerHTML = \`
+        const actionCount = actionableControlCount(state);
+
+        document.getElementById("mobile-dock-root").innerHTML = `
           <nav class="mobile-dock">
-            \${dockSections
-              .map((section) => \`
+            ${dockSections
+              .map((section) => `
                 <button
                   type="button"
-                  class="dock-button\${activeSection === section.id ? " is-active" : ""}"
-                  data-nav-section="\${section.id}"
+                  class="dock-button${activeSection === section.id ? " is-active" : ""}"
+                  data-nav-section="${section.id}"
                 >
-                  <span class="dock-icon">\${section.icon}</span>
-                  <strong>\${section.label}</strong>
-                  \${counts[section.id] ? \`<span class="dock-badge">\${escapeHtml(counts[section.id])}</span>\` : ""}
+                  <span class="dock-icon">${section.icon}</span>
+                  <strong>${section.label}</strong>
+                  ${section.id === "actions" && actionCount > 0 ? `<span class="dock-badge">${actionCount}</span>` : ""}
+                  ${section.id !== "actions" && unread[section.id] ? `<span class="dock-badge dock-badge--dot"></span>` : ""}
                 </button>
-              \`)
+              `)
               .join("")}
           </nav>
         \`;
@@ -2079,6 +2268,25 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
       }
 
       function render(state) {
+        if (currentPhaseStr !== state.room.phase) {
+          currentPhaseStr = state.room.phase;
+          
+          let bgm = "/resource/audio/bgm_day.wav";
+          if (currentPhaseStr === "night") bgm = "/resource/audio/bgm_night.wav";
+          if (currentPhaseStr === "vote" || currentPhaseStr === "trial" || currentPhaseStr === "defense") bgm = "/resource/audio/bgm_vote.wav";
+          if (currentPhaseStr === "ended") bgm = "/resource/audio/fanfare.wav";
+          AudioManager.playBgm(bgm);
+          
+          let title = "아침이 밝았습니다";
+          if (currentPhaseStr === "night") title = "밤이 되었습니다";
+          if (currentPhaseStr === "vote") title = "투표 시간입니다";
+          if (currentPhaseStr === "defense") title = "최후의 변론";
+          if (currentPhaseStr === "trial") title = "찬반 투표";
+          if (currentPhaseStr === "ended") title = "게임 종료";
+          
+          showPhaseOverlay(currentPhaseStr, title);
+        }
+
         const focusedChat = captureChatDraftState();
         const chatScrollState = captureChatScrollState();
         ensureActiveSection(state);
@@ -2263,6 +2471,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
               targetId: data.get("targetId"),
             });
             showToast("행동을 제출했습니다", "success");
+            AudioManager.playSfx("/resource/audio/action.wav");
             await refreshState();
           }
 
