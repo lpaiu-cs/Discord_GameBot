@@ -59,6 +59,28 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
       }
 
       /* ── Advanced UI/UX: Audio Manager ── */
+      const AUDIO_FILES = {
+        bgm_day: "/resource/audio/bgm_day.mp3",
+        bgm_night: "/resource/audio/bgm_night.mp3",
+        bgm_vote: "/resource/audio/bgm_vote.wav",
+        fanfare: "/resource/audio/fanfare.wav",
+        click: "/resource/audio/click.wav",
+        action: "/resource/audio/action.wav",
+        tick: "/resource/audio/tick.wav",
+        beast_howling: "/resource/audio/beast_howling.mp3",
+        camera_shutter: "/resource/audio/camera_shutter.mp3",
+        charm: "/resource/audio/charm.mp3",
+        doctor_save: "/resource/audio/%EC%95%84%EB%B3%91%EC%9B%90%EC%9D%B4%EC%9A%94%EC%95%88%EC%8B%AC%ED%95%98%EC%84%B8%EC%9A%94.mp3",
+        door: "/resource/audio/door.mp3",
+        explosion: "/resource/audio/explosion.mp3",
+        gavel: "/resource/audio/gavel.mp3",
+        gunshots: "/resource/audio/gunshots.mp3",
+        magical: "/resource/audio/magical.mp3",
+        punch: "/resource/audio/punch.mp3",
+        revive: "/resource/audio/revive.mp3",
+        rogerthatover: "/resource/audio/rogerthatover.mp3",
+      };
+
       const AudioManager = {
         ctx: null,
         buffers: {},
@@ -85,7 +107,7 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
             return audioBuffer;
           } catch(e) { return null; }
         },
-        playSfx(url) {
+        playSfx(url, options = {}) {
           try {
             this.init();
             this.load(url).then(buf => {
@@ -93,7 +115,7 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
               const source = this.ctx.createBufferSource();
               source.buffer = buf;
               const gain = this.ctx.createGain();
-              gain.gain.value = 0.5;
+              gain.gain.value = typeof options.gain === "number" ? options.gain : 0.5;
               source.connect(gain);
               gain.connect(this.ctx.destination);
               source.start();
@@ -141,13 +163,74 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
       function preloadAudio() {
         if (audioPreloaded) return;
         audioPreloaded = true;
-        AudioManager.load("/resource/audio/bgm_day.mp3");
-        AudioManager.load("/resource/audio/bgm_night.mp3");
-        AudioManager.load("/resource/audio/bgm_vote.mp3");
-        AudioManager.load("/resource/audio/fanfare.mp3");
-        AudioManager.load("/resource/audio/click.mp3");
-        AudioManager.load("/resource/audio/action.mp3");
-        AudioManager.load("/resource/audio/tick.mp3");
+        Object.values(AUDIO_FILES).forEach((url) => {
+          AudioManager.load(url);
+        });
+      }
+
+      const playedAudioCueIds = new Set();
+      const audioSessionStartedAt = Date.now();
+      let audioCueTimer = null;
+      const queuedAudioCueKeys = [];
+
+      function queueAudioCuePlayback(key, delayMs = 0) {
+        const url = AUDIO_FILES[key];
+        if (!url) {
+          return;
+        }
+
+        queuedAudioCueKeys.push({ key, delayMs });
+        flushQueuedAudioCues();
+      }
+
+      function flushQueuedAudioCues() {
+        if (audioCueTimer || queuedAudioCueKeys.length === 0) {
+          return;
+        }
+
+        const next = queuedAudioCueKeys.shift();
+        if (!next) {
+          return;
+        }
+
+        audioCueTimer = setTimeout(() => {
+          audioCueTimer = null;
+          AudioManager.playSfx(AUDIO_FILES[next.key]);
+          flushQueuedAudioCues();
+        }, next.delayMs);
+      }
+
+      function playNewAudioCues(state, options = {}) {
+        const phaseChanged = Boolean(options.phaseChanged);
+        const newCues = (state.audioCues || [])
+          .filter((cue) => cue && !playedAudioCueIds.has(cue.id) && cue.createdAt >= audioSessionStartedAt - 500)
+          .sort((left, right) => left.createdAt - right.createdAt);
+
+        if (newCues.length === 0) {
+          return;
+        }
+
+        const baseDelay = phaseChanged ? 180 : 0;
+        newCues.forEach((cue, index) => {
+          playedAudioCueIds.add(cue.id);
+          queueAudioCuePlayback(cue.key, baseDelay + index * 220);
+        });
+      }
+
+      function bgmForPhase(phase) {
+        if (phase === "night") return AUDIO_FILES.bgm_night;
+        if (phase === "vote" || phase === "trial" || phase === "defense") return AUDIO_FILES.bgm_vote;
+        if (phase === "ended") return AUDIO_FILES.fanfare;
+        return AUDIO_FILES.bgm_day;
+      }
+
+      function phaseOverlayTitle(phase) {
+        if (phase === "night") return "밤이 되었습니다";
+        if (phase === "vote") return "투표 시간입니다";
+        if (phase === "defense") return "최후의 변론";
+        if (phase === "trial") return "찬반 투표";
+        if (phase === "ended") return "게임 종료";
+        return "아침이 밝았습니다";
       }
 
       let pointerRenderLock = false;
@@ -200,7 +283,7 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
          preloadAudio();
          const target = event.target;
          if (target instanceof Element && target.closest('button, .action-grid-cell, .memo-role-cell, .dock-button')) {
-            AudioManager.playSfx("/resource/audio/click.mp3");
+            AudioManager.playSfx(AUDIO_FILES.click);
          }
       }, { capture: true });
       document.addEventListener("pointerup", releaseRenderAfterPointer, true);
@@ -236,6 +319,7 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
       }
 
       let currentPhaseStr = initialState.room.phase;
+      let currentBgmPhase = null;
       let currentState = initialState;
       let sinceVersion = initialState.version;
       let pollTimer = null;
@@ -335,7 +419,7 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
         /* Timer chip urgency and tick sound */
         if (remainingSec <= 10 && remainingSec > 0 && window.lastTickSec !== remainingSec) {
            window.lastTickSec = remainingSec;
-           try { AudioManager.playSfx("/resource/audio/tick.mp3"); } catch(e){}
+           try { AudioManager.playSfx(AUDIO_FILES.tick); } catch(e){}
         }
 
         document.querySelectorAll(".timer-chip").forEach((chip) => {
@@ -1153,23 +1237,16 @@ function actionControl(control) {
       }
 
       function renderNow(state) {
-        if (currentPhaseStr !== state.room.phase) {
+        const phaseChanged = currentPhaseStr !== state.room.phase;
+
+        if (currentBgmPhase !== state.room.phase) {
+          currentBgmPhase = state.room.phase;
+          AudioManager.playBgm(bgmForPhase(state.room.phase));
+        }
+
+        if (phaseChanged) {
           currentPhaseStr = state.room.phase;
-          
-          let bgm = "/resource/audio/bgm_day.mp3";
-          if (currentPhaseStr === "night") bgm = "/resource/audio/bgm_night.mp3";
-          if (currentPhaseStr === "vote" || currentPhaseStr === "trial" || currentPhaseStr === "defense") bgm = "/resource/audio/bgm_vote.mp3";
-          if (currentPhaseStr === "ended") bgm = "/resource/audio/fanfare.mp3";
-          AudioManager.playBgm(bgm);
-          
-          let title = "아침이 밝았습니다";
-          if (currentPhaseStr === "night") title = "밤이 되었습니다";
-          if (currentPhaseStr === "vote") title = "투표 시간입니다";
-          if (currentPhaseStr === "defense") title = "최후의 변론";
-          if (currentPhaseStr === "trial") title = "찬반 투표";
-          if (currentPhaseStr === "ended") title = "게임 종료";
-          
-          showPhaseOverlay(currentPhaseStr, title);
+          showPhaseOverlay(currentPhaseStr, phaseOverlayTitle(currentPhaseStr));
         }
 
         const focusedChat = captureChatDraftState();
@@ -1190,6 +1267,7 @@ function actionControl(control) {
         updateDeadlineDisplays();
         scheduleDeadlineTicker();
         queueChatAutoscroll(chatScrollState);
+        playNewAudioCues(state, { phaseChanged });
       }
 
       async function refreshState() {
@@ -1256,7 +1334,7 @@ function actionControl(control) {
               targetId: data.get("targetId"),
             });
             showToast("행동을 제출했습니다", "success");
-            AudioManager.playSfx("/resource/audio/action.mp3");
+            AudioManager.playSfx(AUDIO_FILES.action);
             await refreshState();
           }
 

@@ -1,4 +1,4 @@
-import { MafiaGame, WebChatChannel } from "../game/game";
+import { DISCUSSION_TIME_ADJUST_SECONDS, MafiaGame, VisibleAudioCue, WebChatChannel } from "../game/game";
 import { isMafiaTeam, Phase, PlayerState } from "../game/model";
 import { getRoleLabel, getRoleSummary, getTeamLabel } from "../game/rules";
 
@@ -95,6 +95,7 @@ export interface DashboardStatePayload {
     deadPlayers: Array<{ userId: string; displayName: string; ascended: boolean }>;
   };
   publicLines: string[];
+  audioCues: VisibleAudioCue[];
   endedSummary: null | {
     winnerLabel: string | null;
     reason: string | null;
@@ -162,7 +163,8 @@ export function buildDashboardState(
     },
     room: {
       gameId: game.id,
-      rulesetLabel: game.ruleset === "balance" ? "시즌4 밸런스" : "시즌4 초기",
+      // rulesetLabel: game.ruleset === "balance" ? "시즌4 밸런스" : "시즌4 초기",
+      rulesetLabel: "시즌4 밸런스",
       phase: game.phase,
       phaseLabel: PHASE_LABELS[game.phase],
       dayNumber: game.dayNumber,
@@ -207,6 +209,7 @@ export function buildDashboardState(
       })),
     },
     publicLines: [...game.lastPublicLines],
+    audioCues: game.getAudioCuesForUser(userId),
     endedSummary:
       game.phase === "ended"
         ? {
@@ -381,10 +384,10 @@ function buildDiscussionControls(game: MafiaGame, player: PlayerState, controls:
       type: "buttons",
       actionType: "time_adjust",
       title: "토론 시간 조절",
-      description: "하루에 한 번만 토론 시간을 15초 늘리거나 줄일 수 있습니다.",
+      description: `하루에 한 번만 토론 시간을 ${DISCUSSION_TIME_ADJUST_SECONDS}초 늘리거나 줄일 수 있습니다.`,
       buttons: [
-        { label: "-15초", value: "cut" },
-        { label: "+15초", value: "add" },
+        { label: `-${DISCUSSION_TIME_ADJUST_SECONDS}초`, value: "cut" },
+        { label: `+${DISCUSSION_TIME_ADJUST_SECONDS}초`, value: "add" },
       ],
     });
   }

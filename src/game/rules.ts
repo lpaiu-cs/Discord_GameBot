@@ -135,13 +135,15 @@ export function getRoleSummary(role: Role, ruleset: Ruleset): string {
     case "spy":
       return "밤마다 한 명의 직업을 확인합니다. 마피아를 맞히면 즉시 접선하고 같은 밤에 한 번 더 조사할 수 있습니다.";
     case "beastman":
-      return ruleset === "balance"
-        ? "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 실제로 마피아에게 죽으면 접선합니다. 회피가 발동하면 즉시 접선합니다. 접선 후 다른 마피아팀 생존자가 없으면 혼자 대상을 처형할 수 있고, 이 공격은 의사/군인/연인 효과를 무시합니다."
-        : "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 실제로 마피아에게 죽으면 접선합니다. 접선 후 다른 마피아팀 생존자가 없으면 혼자 대상을 처형할 수 있고, 이 공격은 의사/군인/연인 효과를 무시합니다.";
+      // return ruleset === "balance"
+      //   ? "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 실제로 마피아에게 죽으면 접선합니다. 회피가 발동하면 즉시 접선합니다. 접선 후 다른 마피아팀 생존자가 없으면 혼자 대상을 처형할 수 있고, 이 공격은 의사/군인/연인 효과를 무시합니다."
+      //   : "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 실제로 마피아에게 죽으면 접선합니다. 접선 후 다른 마피아팀 생존자가 없으면 혼자 대상을 처형할 수 있고, 이 공격은 의사/군인/연인 효과를 무시합니다.";
+      return "접선 전에는 밤마다 한 명을 표시합니다. 표시한 사람이 실제로 마피아에게 죽으면 접선합니다. 회피가 발동하면 즉시 접선합니다. 접선 후 다른 마피아팀 생존자가 없으면 혼자 대상을 처형할 수 있고, 이 공격은 의사/군인/연인 효과를 무시합니다.";
     case "madam":
-      return ruleset === "balance"
-        ? "투표 시간에 한 명을 유혹해 그날 밤 효과를 막습니다. 전 직업에 적용됩니다."
-        : "투표 시간에 한 명을 유혹해 그날 밤 능력 사용을 막습니다.";
+      // return ruleset === "balance"
+      //   ? "투표 시간에 한 명을 유혹해 그날 밤 효과를 막습니다. 전 직업에 적용됩니다."
+      //   : "투표 시간에 한 명을 유혹해 그날 밤 능력 사용을 막습니다.";
+      return "투표 시간에 한 명을 유혹해 그날 밤 효과를 막습니다. 전 직업에 적용됩니다.";
     case "police":
       return "밤마다 한 명을 조사해 마피아 여부를 확인합니다.";
     case "doctor":
@@ -175,7 +177,8 @@ export function getRoleSummary(role: Role, ruleset: Ruleset): string {
 
 export function normalizeStolenRole(stolenRole: Role, ruleset: Ruleset): Role {
   if (isMafiaTeam(stolenRole)) {
-    return ruleset === "balance" ? "evil" : "citizen";
+    // return ruleset === "balance" ? "evil" : "citizen";
+    return "evil";
   }
 
   return "citizen";

@@ -257,3 +257,31 @@ test("잘못 인코딩된 쿠키 헤더는 500 대신 401 로 처리된다", asy
 
   assert.equal(response.status, 401);
 });
+
+test("리소스 서버는 mp3 와 URL 인코딩된 오디오 파일명을 그대로 제공한다", async (t) => {
+  const manager = new GameManager();
+  const joinTicketService = new JoinTicketService("join-secret");
+  const sessionStore = new SessionStore("session-secret");
+  const server = new DashboardServer({
+    client: {} as Client,
+    gameManager: manager,
+    joinTicketService,
+    sessionStore,
+    port: 0,
+    secureCookies: false,
+  });
+  const port = await server.listen();
+  t.after(async () => {
+    await server.close();
+  });
+
+  const gunshots = await fetch(`http://127.0.0.1:${port}/resource/audio/gunshots.mp3`);
+  const doctorSave = await fetch(
+    `http://127.0.0.1:${port}/resource/audio/%EC%95%84%EB%B3%91%EC%9B%90%EC%9D%B4%EC%9A%94%EC%95%88%EC%8B%AC%ED%95%98%EC%84%B8%EC%9A%94.mp3`,
+  );
+
+  assert.equal(gunshots.status, 200);
+  assert.equal(gunshots.headers.get("content-type"), "audio/mpeg");
+  assert.equal(doctorSave.status, 200);
+  assert.equal(doctorSave.headers.get("content-type"), "audio/mpeg");
+});

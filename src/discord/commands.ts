@@ -7,16 +7,16 @@ export const mafiaCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) =>
     subcommand
       .setName("create")
-      .setDescription("현재 채널에 새 게임 로비를 만듭니다.")
-      .addStringOption((option) =>
-        option
-          .setName("ruleset")
-          .setDescription("시즌4 세부 규칙셋")
-          .addChoices(
-            { name: "시즌4 밸런스", value: "balance" },
-            { name: "시즌4 초기", value: "initial" },
-          ),
-      ),
+      .setDescription("현재 채널에 새 시즌4 밸런스 게임 로비를 만듭니다.")
+      // .addStringOption((option) =>
+      //   option
+      //     .setName("ruleset")
+      //     .setDescription("시즌4 세부 규칙셋")
+      //     .addChoices(
+      //       { name: "시즌4 밸런스", value: "balance" },
+      //       { name: "시즌4 초기", value: "initial" },
+      //     ),
+      // ),
   )
   .addSubcommand((subcommand) => subcommand.setName("join").setDescription("현재 로비에 참가합니다."))
   .addSubcommand((subcommand) => subcommand.setName("leave").setDescription("현재 로비에서 나갑니다."))

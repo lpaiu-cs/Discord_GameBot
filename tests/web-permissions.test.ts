@@ -77,8 +77,12 @@ test("역할과 상태에 따라 비밀 채팅 접근 권한이 달라진다", (
   const game = createTestGame();
   seedPlayers(game, [
     { userId: "mafia", role: "mafia" },
-    { userId: "spy", role: "spy", isContacted: false },
-    { userId: "madam", role: "madam", isContacted: true },
+    { userId: "spy-cold", role: "spy", isContacted: false },
+    { userId: "spy-hot", role: "spy", isContacted: true },
+    { userId: "beast-cold", role: "beastman", isContacted: false },
+    { userId: "beast-hot", role: "beastman", isContacted: true },
+    { userId: "madam-cold", role: "madam", isContacted: false },
+    { userId: "madam-hot", role: "madam", isContacted: true },
     { userId: "lover-a", role: "lover", loverId: "lover-b" },
     { userId: "lover-b", role: "lover", loverId: "lover-a" },
     { userId: "medium", role: "medium" },
@@ -89,12 +93,19 @@ test("역할과 상태에 따라 비밀 채팅 접근 권한이 달라진다", (
   game.phase = "night";
 
   assert.equal(game.canReadChat("mafia", "mafia"), true);
-  assert.equal(game.canReadChat("spy", "mafia"), false);
-  assert.equal(game.canReadChat("madam", "mafia"), true);
+  assert.equal(game.canReadChat("spy-cold", "mafia"), false);
+  assert.equal(game.canReadChat("spy-hot", "mafia"), true);
+  assert.equal(game.canReadChat("beast-cold", "mafia"), false);
+  assert.equal(game.canReadChat("beast-hot", "mafia"), true);
+  assert.equal(game.canReadChat("madam-cold", "mafia"), false);
+  assert.equal(game.canReadChat("madam-hot", "mafia"), true);
   assert.equal(game.canReadChat("lover-a", "lover"), true);
   assert.equal(game.canReadChat("medium", "graveyard"), true);
   assert.equal(game.canReadChat("dead", "mafia"), true);
   assert.equal(game.canReadChat("dead", "lover"), true);
+  assert.equal(game.canWriteChat("spy-hot", "mafia"), true);
+  assert.equal(game.canWriteChat("beast-hot", "mafia"), true);
+  assert.equal(game.canWriteChat("madam-hot", "mafia"), true);
   assert.equal(game.canWriteChat("dead", "mafia"), false);
   assert.equal(game.canWriteChat("dead", "lover"), false);
   assert.equal(game.canReadChat("citizen", "mafia"), false);

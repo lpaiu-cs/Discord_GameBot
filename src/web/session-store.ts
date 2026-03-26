@@ -9,7 +9,7 @@ export interface WebSession {
   csrfToken: string;
 }
 
-export interface SessionStore {
+export interface SessionStoreContract {
   create(gameId: string, discordUserId: string): WebSession;
   get(sessionId: string): WebSession | null;
   touch(sessionId: string): WebSession | null;
@@ -20,7 +20,7 @@ export interface SessionStore {
   parseCookieValue(cookieValue: string): string | null;
 }
 
-export class InMemorySessionStore implements SessionStore {
+export class InMemorySessionStore implements SessionStoreContract {
   private readonly sessions = new Map<string, WebSession>();
   private readonly currentByGameUser = new Map<string, string>();
 
@@ -143,6 +143,8 @@ export class InMemorySessionStore implements SessionStore {
     }
   }
 }
+
+export class SessionStore extends InMemorySessionStore {}
 
 function safeEquals(left: string, right: string): boolean {
   const leftBuffer = Buffer.from(left);

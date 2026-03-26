@@ -117,9 +117,9 @@ export class DashboardServer {
       const url = new URL(request.url ?? "/", "http://127.0.0.1");
       const pathname = url.pathname;
 
-      const resourceMatch = pathname.match(/^\/resource\/(.+?\.(?:png|svg|wav))$/u);
+      const resourceMatch = pathname.match(/^\/resource\/(.+?\.(?:png|svg|wav|mp3))$/u);
       if (resourceMatch && method === "GET") {
-        await this.handleResource(response, resourceMatch[1]);
+        await this.handleResource(response, safeDecodePath(resourceMatch[1]));
         return;
       }
 
@@ -508,6 +508,14 @@ function parseCookies(header: string): Record<string, string> {
 }
 
 function safeDecodeCookieValue(value: string): string {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+
+function safeDecodePath(value: string): string {
   try {
     return decodeURIComponent(value);
   } catch {

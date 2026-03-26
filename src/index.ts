@@ -109,7 +109,8 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
         manager.delete(interaction.guildId);
       }
 
-      const ruleset = (interaction.options.getString("ruleset") ?? config.ruleset) as Ruleset;
+      // const ruleset = (interaction.options.getString("ruleset") ?? config.ruleset) as Ruleset;
+      const ruleset: Ruleset = config.ruleset;
       game = createGame(manager, interaction, ruleset);
       await interaction.reply({ content: "로비를 만들었습니다.", flags: MessageFlags.Ephemeral });
       await game.sendOrUpdateLobby(client);

@@ -37,6 +37,7 @@ import {
 import { assignRoles, getRoleLabel, getRoleSummary, getTeamLabel, normalizeStolenRole } from "./rules";
 
 export type TimeAdjust = "add" | "cut";
+export const DISCUSSION_TIME_ADJUST_SECONDS = 10;
 
 export interface NightSelectionRequest {
   kind: "night" | "aftermath" | "madam" | "terror";
@@ -104,6 +105,30 @@ export interface WebPrivateLogEntry {
   id: string;
   line: string;
   createdAt: number;
+}
+
+export type AudioCueKey =
+  | "beast_howling"
+  | "camera_shutter"
+  | "explosion"
+  | "gunshots"
+  | "revive"
+  | "doctor_save"
+  | "charm"
+  | "door"
+  | "magical"
+  | "punch"
+  | "rogerthatover"
+  | "gavel";
+
+export interface VisibleAudioCue {
+  id: string;
+  key: AudioCueKey;
+  createdAt: number;
+}
+
+interface QueuedAudioCue extends VisibleAudioCue {
+  recipientIds: string[] | null;
 }
 
 export class GameManager {
@@ -174,6 +199,7 @@ export class MafiaGame {
     graveyard: [],
   };
   readonly privateLogs = new Map<string, WebPrivateLogEntry[]>();
+  readonly audioCues: QueuedAudioCue[] = [];
 
   phase: Phase = "lobby";
   phaseContext: PhaseContext | null = null;
@@ -252,6 +278,12 @@ export class MafiaGame {
 
   getPrivateLog(userId: string): WebPrivateLogEntry[] {
     return [...(this.privateLogs.get(userId) ?? [])];
+  }
+
+  getAudioCuesForUser(userId: string): VisibleAudioCue[] {
+    return this.audioCues
+      .filter((cue) => cue.recipientIds === null || cue.recipientIds.includes(userId))
+      .map(({ id, key, createdAt }) => ({ id, key, createdAt }));
   }
 
   getNightPromptForPlayer(userId: string): PromptDefinition | null {
@@ -485,7 +517,8 @@ export class MafiaGame {
     await this.sendRoleCards(client);
 
     this.phase = "night";
-    this.setPublicLines(["게임이 시작되었습니다.", `시즌4 ${this.ruleset === "balance" ? "밸런스" : "초기"} 규칙으로 진행합니다.`]);
+    // this.setPublicLines(["게임이 시작되었습니다.", `시즌4 ${this.ruleset === "balance" ? "밸런스" : "초기"} 규칙으로 진행합니다.`]);
+    this.setPublicLines(["게임이 시작되었습니다.", "시즌4 밸런스 규칙으로 진행합니다."]);
     await this.sendOrUpdateStatus(client);
     await this.beginNight(client);
   }
@@ -640,17 +673,18 @@ export class MafiaGame {
       throw new Error("토론 시간이 없습니다.");
     }
 
-    const delta = direction === "add" ? 15_000 : -15_000;
+    const adjustLabel = `${DISCUSSION_TIME_ADJUST_SECONDS}초`;
+    const delta = direction === "add" ? DISCUSSION_TIME_ADJUST_SECONDS * 1_000 : -DISCUSSION_TIME_ADJUST_SECONDS * 1_000;
     player.timeAdjustUsedOnDay = this.dayNumber;
     this.phaseContext.deadlineAt = Math.max(Date.now() + 5_000, this.phaseContext.deadlineAt + delta);
     this.restartTimer(client, this.phaseContext.deadlineAt - Date.now(), () => this.finishDiscussion(client));
     this.appendPublicActivityLog(
       direction === "add"
-        ? `${player.displayName} 님이 토론 시간을 15초 늘렸습니다.`
-        : `${player.displayName} 님이 토론 시간을 15초 줄였습니다.`,
+        ? `${player.displayName} 님이 토론 시간을 ${adjustLabel} 늘렸습니다.`
+        : `${player.displayName} 님이 토론 시간을 ${adjustLabel} 줄였습니다.`,
     );
     await this.sendOrUpdateStatus(client);
-    return direction === "add" ? "토론 시간을 15초 늘렸습니다." : "토론 시간을 15초 줄였습니다.";
+    return direction === "add" ? `토론 시간을 ${adjustLabel} 늘렸습니다.` : `토론 시간을 ${adjustLabel} 줄였습니다.`;
   }
 
   async handleReporterPublish(client: Client, interaction: ButtonInteraction): Promise<void> {
@@ -688,6 +722,7 @@ export class MafiaGame {
       embeds: [new EmbedBuilder().setColor(Colors.Blurple).setTitle("기자 기사").setDescription(articleLine)],
     });
 
+    this.queueAudioCue("camera_shutter");
     this.pendingArticle = null;
     this.appendPublicLine(articleLine);
     await this.sendOrUpdateStatus(client);
@@ -745,6 +780,9 @@ export class MafiaGame {
       }
 
       choice.resolve(targetId);
+      if (choice.action === "mediumAscend") {
+        this.queueAudioCue("magical", [request.actorId, targetId]);
+      }
       this.bumpStateVersion();
       return { payload: this.buildAftermathPayload(choice, targetId) };
     }
@@ -793,10 +831,19 @@ export class MafiaGame {
         if (target.role === "mafia") {
           this.contactPlayer(request.actorId);
           this.spyBonusGrantedTonight.add(request.actorId);
+          this.queueAudioCue("door", [request.actorId, target.userId]);
           this.bumpStateVersion();
           await this.syncSecretChannels(client);
           return { payload: this.buildSpyBonusPayload(actor, record.targetId) };
         }
+      }
+
+      if (record.action === "thugThreaten") {
+        this.queueAudioCue("punch", [request.actorId, targetId]);
+      }
+
+      if (record.action === "policeInspect") {
+        this.queueAudioCue("rogerthatover", [request.actorId]);
       }
 
       this.bumpStateVersion();
@@ -822,6 +869,7 @@ export class MafiaGame {
         this.contactPlayer(request.actorId);
       }
 
+      this.queueAudioCue("charm", [targetId]);
       await this.sendOrUpdateStatus(client);
       return { payload: this.buildMadamPayload(actor, targetId) };
     }
@@ -1087,6 +1135,7 @@ export class MafiaGame {
     }
 
     if (target.role === "politician" && !this.isPoliticianEffectBlocked(target.userId)) {
+      this.queueAudioCue("gavel");
       lines.push("정치인은 투표 처형되지 않습니다.");
       this.setPublicLines(lines);
       await this.beginNight(client);
@@ -1102,6 +1151,7 @@ export class MafiaGame {
         const burnTarget = this.getPlayer(burn.targetId);
         if (burnTarget && burnTarget.alive && getTeam(burnTarget.role) !== getTeam(target.role)) {
           this.killPlayer(burnTarget.userId, "테러리스트 산화");
+          this.queueAudioCue("explosion");
           lines.push(`${burnTarget.displayName} 님이 테러리스트의 산화에 휘말렸습니다.`);
         }
       }
@@ -1191,7 +1241,8 @@ export class MafiaGame {
 
     if (mafiaVictimId) {
       const target = this.getPlayerOrThrow(mafiaVictimId);
-      if (target.role === "beastman" && this.ruleset === "balance") {
+      // if (target.role === "beastman" && this.ruleset === "balance") {
+      if (target.role === "beastman") {
         this.contactPlayer(target.userId);
         mafiaVictimId = null;
         mafiaVictimResolved = true;
@@ -1206,12 +1257,14 @@ export class MafiaGame {
       const redirected = this.resolveLoverRedirect(mafiaVictimId, summary, mafiaResult.killerId);
       const finalVictimId = redirected ?? mafiaVictimId;
       const finalVictim = this.getPlayerOrThrow(finalVictimId);
-      const soldierBlocked =
-        this.ruleset === "balance" &&
-        this.blockedTonightTargetId === finalVictimId &&
-        finalVictim.role === "soldier";
+      // const soldierBlocked =
+      //   this.ruleset === "balance" &&
+      //   this.blockedTonightTargetId === finalVictimId &&
+      //   finalVictim.role === "soldier";
+      const soldierBlocked = this.blockedTonightTargetId === finalVictimId && finalVictim.role === "soldier";
 
       if (protectedId === finalVictimId) {
+        this.queueAudioCue("doctor_save");
         summary.publicLines.push("의사의 치료로 아무도 죽지 않았습니다.");
       } else if (finalVictim.role === "soldier" && !finalVictim.soldierUsed && !soldierBlocked) {
         finalVictim.soldierUsed = true;
@@ -1219,12 +1272,14 @@ export class MafiaGame {
       } else {
         markNightDeath(finalVictimId, "마피아 처형");
         actualMafiaVictimId = finalVictimId;
+        this.queueAudioCue("gunshots");
         summary.publicLines.push(`${finalVictim.displayName} 님이 밤사이 사망했습니다.`);
 
         if (finalVictim.role === "terrorist" && finalVictim.terrorMarkId && finalVictim.terrorMarkId === mafiaResult.killerId) {
           const killer = mafiaResult.killerId ? this.getPlayer(mafiaResult.killerId) : undefined;
           if (killer && killer.alive) {
             markNightDeath(killer.userId, "테러리스트 자폭");
+            this.queueAudioCue("explosion");
             summary.publicLines.push(`${killer.displayName} 님이 테러리스트의 자폭에 휘말렸습니다.`);
           }
         }
@@ -1248,6 +1303,7 @@ export class MafiaGame {
       const target = this.getPlayer(beastAction.targetId);
       if (target && target.alive) {
         markNightDeath(target.userId, "짐승인간 처형");
+        this.queueAudioCue("beast_howling");
         summary.publicLines.push(`${target.displayName} 님이 밤사이 사망했습니다.`);
       }
     }
@@ -1318,7 +1374,8 @@ export class MafiaGame {
       if (priestTargetId) {
         priest.priestUsed = true;
         const target = this.getPlayerOrThrow(priestTargetId);
-        const blockedByMedium = this.ruleset === "balance" && target.ascended;
+        // const blockedByMedium = this.ruleset === "balance" && target.ascended;
+        const blockedByMedium = target.ascended;
         if (blockedByMedium) {
           summary.privateLines.push({
             userId: priest.userId,
@@ -1326,6 +1383,7 @@ export class MafiaGame {
           });
         } else if (!target.alive) {
           this.revivePlayer(target.userId);
+          this.queueAudioCue("revive");
           summary.publicLines.push(`${target.displayName} 님이 성직자의 힘으로 부활했습니다.`);
         }
       }
@@ -1370,7 +1428,8 @@ export class MafiaGame {
       return null;
     }
 
-    if (this.ruleset === "balance" && this.blockedTonightTargetId === partner.userId) {
+    // if (this.ruleset === "balance" && this.blockedTonightTargetId === partner.userId) {
+    if (this.blockedTonightTargetId === partner.userId) {
       return null;
     }
 
@@ -1839,7 +1898,8 @@ export class MafiaGame {
       .setDescription(getRoleSummary(player.role, this.ruleset))
       .addFields([
         { name: "팀", value: getTeamLabel(player.role), inline: true },
-        { name: "규칙셋", value: this.ruleset === "balance" ? "시즌4 밸런스" : "시즌4 초기", inline: true },
+        // { name: "규칙셋", value: this.ruleset === "balance" ? "시즌4 밸런스" : "시즌4 초기", inline: true },
+        { name: "규칙셋", value: "시즌4 밸런스", inline: true },
       ]);
 
     if (player.role === "mafia") {
@@ -1875,7 +1935,8 @@ export class MafiaGame {
     return new EmbedBuilder()
       .setColor(Colors.Blurple)
       .setTitle("마피아42 시즌4 로비")
-      .setDescription(`규칙셋: ${this.ruleset === "balance" ? "시즌4 밸런스" : "시즌4 초기"}`)
+      // .setDescription(`규칙셋: ${this.ruleset === "balance" ? "시즌4 밸런스" : "시즌4 초기"}`)
+      .setDescription("규칙셋: 시즌4 밸런스")
       .addFields([
         {
           name: `참가자 (${this.players.size}/8)`,
@@ -1904,7 +1965,8 @@ export class MafiaGame {
 
     return new EmbedBuilder()
       .setColor(this.phase === "night" ? Colors.DarkBlue : this.phase === "ended" ? Colors.DarkButNotBlack : Colors.Gold)
-      .setTitle(`마피아42 시즌4 ${this.ruleset === "balance" ? "밸런스" : "초기"} 게임`)
+      // .setTitle(`마피아42 시즌4 ${this.ruleset === "balance" ? "밸런스" : "초기"} 게임`)
+      .setTitle("마피아42 시즌4 밸런스 게임")
       .setDescription(
         [
           `상태: ${PHASE_LABELS[this.phase]}`,
@@ -2290,7 +2352,8 @@ export class MafiaGame {
   }
 
   private isPoliticianEffectBlocked(userId: string): boolean {
-    return this.ruleset === "balance" && this.pendingSeductionTargetId === userId;
+    // return this.ruleset === "balance" && this.pendingSeductionTargetId === userId;
+    return this.pendingSeductionTargetId === userId;
   }
 
   private getSecretChatAccess(channel: Exclude<WebChatChannel, "public">): {
@@ -2358,6 +2421,28 @@ export class MafiaGame {
         return { readableIds, writableIds };
       }
     }
+  }
+
+  private queueAudioCue(key: AudioCueKey, recipientIds?: string[]): void {
+    const createdAt = Date.now();
+    const dedupedRecipientIds = recipientIds?.length ? [...new Set(recipientIds)] : null;
+    this.audioCues.push({
+      id: `${createdAt.toString(36)}-${Math.floor(Math.random() * 9999)
+        .toString()
+        .padStart(4, "0")}`,
+      key,
+      createdAt,
+      recipientIds: dedupedRecipientIds,
+    });
+    this.pruneAudioCues();
+  }
+
+  private pruneAudioCues(): void {
+    const cutoff = Date.now() - 15 * 60_000;
+    const recent = this.audioCues.filter((cue) => cue.createdAt >= cutoff);
+    const limited = recent.slice(-96);
+    this.audioCues.length = 0;
+    this.audioCues.push(...limited);
   }
 
   private requirePhase(expected: Phase): void {

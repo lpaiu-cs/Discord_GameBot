@@ -44,11 +44,12 @@ function readString(name: string, fallback: string): string {
 
 function readRuleset(): Ruleset {
   const raw = (process.env.DISCORD_RULESET ?? "balance").toLowerCase();
-  if (raw !== "initial" && raw !== "balance") {
-    throw new Error("DISCORD_RULESET 은 initial 또는 balance 여야 합니다.");
+  if (raw !== "balance") {
+    // if (raw !== "initial" && raw !== "balance") {
+    throw new Error("DISCORD_RULESET 은 balance 만 지원합니다.");
   }
 
-  return raw;
+  return "balance";
 }
 
 function readWebMode(): WebMode {

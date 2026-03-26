@@ -1,4 +1,6 @@
-export type Ruleset = "initial" | "balance";
+// S4-초기 규칙은 일단 구현 범위에서 제외하고, 복구 전까지 밸런스만 활성화한다.
+export type Ruleset = "balance";
+// export type Ruleset = "initial" | "balance";
 
 export const ASSIGNABLE_ROLES = [
   "mafia",

@@ -251,10 +251,13 @@ function readPhase(value: string): PreviewPhase {
 }
 
 function readRuleset(value: string): Ruleset {
-  if (value === "initial" || value === "balance") {
-    return value;
+  if (value === "balance") {
+    return "balance";
   }
 
+  // if (value === "initial" || value === "balance") {
+  //   return value;
+  // }
   throw new Error(`unsupported PREVIEW_RULESET: ${value}`);
 }
 
