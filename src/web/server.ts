@@ -8,13 +8,16 @@ import { applyDashboardAction, DashboardActionRequest } from "./game-actions";
 import { renderDashboardPage } from "./html";
 import { JoinTicketService } from "./join-ticket";
 import { buildDashboardState } from "./presenter";
-import { InMemorySessionStore, WebSession } from "./session-store";
+import { RateLimiter } from "./middleware/rate-limit";
+import { parseCookies } from "./middleware/cookie";
+
+import { InMemorySessionStore, SessionStore, WebSession } from "./session-store";
 
 interface DashboardServerOptions {
   client: Client;
   gameManager: GameManager;
   joinTicketService: JoinTicketService;
-  sessionStore: InMemorySessionStore;
+  sessionStore: SessionStore;
   port: number;
   secureCookies: boolean;
 }
@@ -457,63 +460,8 @@ export class DashboardServer {
   }
 }
 
-class RateLimiter {
-  private readonly buckets = new Map<string, { count: number; resetAt: number }>();
 
-  constructor(
-    private readonly limit: number,
-    private readonly windowMs: number,
-  ) {}
 
-  check(key: string): boolean {
-    const now = Date.now();
-    this.cleanup(now);
-    const bucket = this.buckets.get(key);
-    if (!bucket || bucket.resetAt <= now) {
-      this.buckets.set(key, { count: 1, resetAt: now + this.windowMs });
-      return true;
-    }
-
-    if (bucket.count >= this.limit) {
-      return false;
-    }
-
-    bucket.count += 1;
-    return true;
-  }
-
-  private cleanup(now: number): void {
-    for (const [key, bucket] of this.buckets.entries()) {
-      if (bucket.resetAt <= now) {
-        this.buckets.delete(key);
-      }
-    }
-  }
-}
-
-function parseCookies(header: string): Record<string, string> {
-  return header
-    .split(";")
-    .map((part) => part.trim())
-    .filter(Boolean)
-    .reduce<Record<string, string>>((accumulator, entry) => {
-      const [key, ...rest] = entry.split("=");
-      if (!key || rest.length === 0) {
-        return accumulator;
-      }
-
-      accumulator[key] = safeDecodeCookieValue(rest.join("="));
-      return accumulator;
-    }, {});
-}
-
-function safeDecodeCookieValue(value: string): string {
-  try {
-    return decodeURIComponent(value);
-  } catch {
-    return value;
-  }
-}
 
 function safeDecodePath(value: string): string {
   try {

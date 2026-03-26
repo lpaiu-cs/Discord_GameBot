@@ -107,9 +107,12 @@ npm run dev:practice:all
 - `/mafia dashboard` 또는 `/mafia rejoin` 으로 새 링크가 재발급되는지 확인
 - 첫 링크로 만든 세션이 새 링크 교환 뒤 무효화되는지 확인
 - `/game/:gameId` 에 role/raw state 가 query string 으로 노출되지 않는지 확인
-- 브라우저 쿠키가 `HttpOnly`, `Secure`, `SameSite=Lax` 로 내려가는지 확인
-- 상태 polling 이 2초 간격으로 동작하는지 확인
+- 브라우저 쿠키가 `gameId`별로 분리되며, `HttpOnly`, `Secure`, `SameSite=Lax` 로 내려가는지 확인
+- 게임 진입 시 WebSocket 연결이 수립되며 실시간으로 상태 변경이 push 되는지 확인
+- WebSocket 연결 제한(또는 인위적 차단) 시 2초 간격 polling 으로 자연스럽게 fallback 되는지 확인
 - inactive 탭에서 polling 간격이 늘어나는지 확인
+- 악의적으로 조작된 세션 쿠키(malformed cookie) 접근 시 500 에러 대신 401(재로그인)로 처리되는지 확인
+- 동일 세션 복수 탭에서 채팅/액션을 동시에 보낼 때 중복 처리나 권한 우회가 방지되는지 확인
 - discussion phase 에서 공개 채팅 write 가능 여부 확인
 - dead 상태로 시드 후 공개 채팅 write 금지 확인
 - dead 상태로 시드 후 graveyard write 허용 확인
@@ -155,5 +158,5 @@ npm run dev:practice:all
 
 - trycloudflare URL 파싱 성공
 - `/auth/exchange` 와 polling 이 정상 동작
-- SSE 없이 polling 만으로 플레이 가능
+- Quick Tunnel 제한 상황에서도 SSE/WS 대신 fallback polling으로 플레이 가능한지 확인
 - 동시 요청이 몰릴 때 Quick Tunnel 제한을 넘지 않는지 관찰
