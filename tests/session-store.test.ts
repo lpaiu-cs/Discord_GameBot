@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { SessionStore } from "../src/web/session-store";
+import { SessionStore, InMemorySessionStore } from "../src/web/session-store";
 
 test("세션 쿠키는 서명되고 파싱된다", () => {
-  const store = new SessionStore("session-secret");
+  const store = new InMemorySessionStore("session-secret");
   const session = store.create("game-1", "user-1");
 
   const cookieValue = store.serializeCookieValue(session.id);
@@ -14,7 +14,7 @@ test("세션 쿠키는 서명되고 파싱된다", () => {
 });
 
 test("같은 게임 같은 유저의 새 세션은 이전 세션을 무효화한다", () => {
-  const store = new SessionStore("session-secret");
+  const store = new InMemorySessionStore("session-secret");
   const first = store.create("game-1", "user-1");
   const second = store.create("game-1", "user-1");
 
@@ -23,7 +23,7 @@ test("같은 게임 같은 유저의 새 세션은 이전 세션을 무효화한
 });
 
 test("종료된 게임의 세션은 일괄 무효화할 수 있다", () => {
-  const store = new SessionStore("session-secret");
+  const store = new InMemorySessionStore("session-secret");
   const gameOne = store.create("game-1", "user-1");
   const gameTwo = store.create("game-2", "user-1");
 
@@ -34,7 +34,7 @@ test("종료된 게임의 세션은 일괄 무효화할 수 있다", () => {
 });
 
 test("오래된 세션은 접근 시 자동 정리된다", () => {
-  const store = new SessionStore("session-secret", 1_000);
+  const store = new InMemorySessionStore("session-secret", 1_000);
   const session = store.create("game-1", "user-1") as any;
   session.lastSeenAt = Date.now() - 2_000;
 

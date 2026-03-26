@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { JoinTicketService } from "../src/web/join-ticket";
 
-test("join ticket 은 발급 후 1회만 소비할 수 있다", () => {
+test("join ticket 은 발급 후 1회만 소비할 수 있다", async () => {
   const service = new JoinTicketService("join-secret");
   const ticket = service.issue({
     gameId: "game-1",
@@ -10,15 +10,15 @@ test("join ticket 은 발급 후 1회만 소비할 수 있다", () => {
     ttlMs: 180_000,
   });
 
-  const payload = service.consume(ticket);
+  const payload = await service.consume(ticket);
 
   assert.equal(payload.gameId, "game-1");
   assert.equal(payload.discordUserId, "user-1");
   assert.equal(payload.purpose, "join");
-  assert.throws(() => service.consume(ticket), /이미 사용된 join ticket/);
+  await assert.rejects(() => service.consume(ticket), /이미 사용된 join ticket/);
 });
 
-test("join ticket 은 만료 시간을 넘기면 거부된다", () => {
+test("join ticket 은 만료 시간을 넘기면 거부된다", async () => {
   const service = new JoinTicketService("join-secret");
   const originalNow = Date.now;
   const issuedAt = 1_700_000_000_000;
@@ -33,7 +33,7 @@ test("join ticket 은 만료 시간을 넘기면 거부된다", () => {
 
     Date.now = () => issuedAt + 120_001;
 
-    assert.throws(() => service.consume(ticket), /만료/);
+    await assert.rejects(() => service.consume(ticket), /만료/);
   } finally {
     Date.now = originalNow;
   }

@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { Client, Guild, GuildMember } from "discord.js";
-import { GameManager } from "../src/game/game";
+import { GameRegistry, InMemoryGameRegistry } from "../src/game/game";
 import { JoinTicketService } from "../src/web/join-ticket";
-import { SessionStore } from "../src/web/session-store";
+import { SessionStore, InMemorySessionStore } from "../src/web/session-store";
 import { DashboardServer } from "../src/web/server";
 
 function createMember(id: string, displayName: string): GuildMember {
@@ -15,7 +15,7 @@ function createMember(id: string, displayName: string): GuildMember {
 }
 
 test("URL exchange 는 세션 쿠키를 발급하고 polling/chat API 와 연동된다", async (t) => {
-  const manager = new GameManager();
+  const manager = new InMemoryGameRegistry();
   const guild = { id: "guild-1" } as Guild;
   const host = createMember("user-1", "host");
   const game = manager.create(guild, "channel-1", host, "balance");
@@ -27,7 +27,7 @@ test("URL exchange 는 세션 쿠키를 발급하고 polling/chat API 와 연동
   };
 
   const joinTicketService = new JoinTicketService("join-secret");
-  const sessionStore = new SessionStore("session-secret");
+  const sessionStore = new InMemorySessionStore("session-secret");
   const server = new DashboardServer({
     client: {} as Client,
     gameManager: manager,
@@ -100,7 +100,7 @@ test("URL exchange 는 세션 쿠키를 발급하고 polling/chat API 와 연동
 });
 
 test("브라우저는 서로 다른 게임 세션 쿠키를 동시에 유지할 수 있다", async (t) => {
-  const manager = new GameManager();
+  const manager = new InMemoryGameRegistry();
   const host = createMember("user-1", "host");
   const gameA = manager.create({ id: "guild-a" } as Guild, "channel-a", host, "balance");
   const gameB = manager.create({ id: "guild-b" } as Guild, "channel-b", host, "balance");
@@ -119,7 +119,7 @@ test("브라우저는 서로 다른 게임 세션 쿠키를 동시에 유지할 
   };
 
   const joinTicketService = new JoinTicketService("join-secret");
-  const sessionStore = new SessionStore("session-secret");
+  const sessionStore = new InMemorySessionStore("session-secret");
   const server = new DashboardServer({
     client: {} as Client,
     gameManager: manager,
@@ -181,7 +181,7 @@ test("브라우저는 서로 다른 게임 세션 쿠키를 동시에 유지할 
 });
 
 test("로컬 HTTP 프리뷰에서는 세션 쿠키에 Secure 를 붙이지 않는다", async (t) => {
-  const manager = new GameManager();
+  const manager = new InMemoryGameRegistry();
   const guild = { id: "guild-1" } as Guild;
   const host = createMember("user-1", "host");
   const game = manager.create(guild, "channel-1", host, "balance");
@@ -193,7 +193,7 @@ test("로컬 HTTP 프리뷰에서는 세션 쿠키에 Secure 를 붙이지 않�
   };
 
   const joinTicketService = new JoinTicketService("join-secret");
-  const sessionStore = new SessionStore("session-secret");
+  const sessionStore = new InMemorySessionStore("session-secret");
   const server = new DashboardServer({
     client: {} as Client,
     gameManager: manager,
@@ -223,7 +223,7 @@ test("로컬 HTTP 프리뷰에서는 세션 쿠키에 Secure 를 붙이지 않�
 });
 
 test("잘못 인코딩된 쿠키 헤더는 500 대신 401 로 처리된다", async (t) => {
-  const manager = new GameManager();
+  const manager = new InMemoryGameRegistry();
   const guild = { id: "guild-1" } as Guild;
   const host = createMember("user-1", "host");
   const game = manager.create(guild, "channel-1", host, "balance");
@@ -235,7 +235,7 @@ test("잘못 인코딩된 쿠키 헤더는 500 대신 401 로 처리된다", asy
   };
 
   const joinTicketService = new JoinTicketService("join-secret");
-  const sessionStore = new SessionStore("session-secret");
+  const sessionStore = new InMemorySessionStore("session-secret");
   const server = new DashboardServer({
     client: {} as Client,
     gameManager: manager,
@@ -259,9 +259,9 @@ test("잘못 인코딩된 쿠키 헤더는 500 대신 401 로 처리된다", asy
 });
 
 test("리소스 서버는 mp3 와 URL 인코딩된 오디오 파일명을 그대로 제공한다", async (t) => {
-  const manager = new GameManager();
+  const manager = new InMemoryGameRegistry();
   const joinTicketService = new JoinTicketService("join-secret");
-  const sessionStore = new SessionStore("session-secret");
+  const sessionStore = new InMemorySessionStore("session-secret");
   const server = new DashboardServer({
     client: {} as Client,
     gameManager: manager,
@@ -287,9 +287,9 @@ test("리소스 서버는 mp3 와 URL 인코딩된 오디오 파일명을 그대
 });
 
 test("클라이언트 자산 서버는 CSS 와 JS 번들을 그대로 제공한다", async (t) => {
-  const manager = new GameManager();
+  const manager = new InMemoryGameRegistry();
   const joinTicketService = new JoinTicketService("join-secret");
-  const sessionStore = new SessionStore("session-secret");
+  const sessionStore = new InMemorySessionStore("session-secret");
   const server = new DashboardServer({
     client: {} as Client,
     gameManager: manager,

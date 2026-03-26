@@ -1,5 +1,5 @@
 import { Client } from "discord.js";
-import { GameManager } from "../game/game";
+import { InMemoryGameRegistry, GameRegistry } from "../game/game";
 import { Ruleset } from "../game/model";
 import {
   buildPracticeScenarioDefinitions,
@@ -42,7 +42,7 @@ async function main(): Promise<void> {
   const ruleset = readRuleset(process.env.PRACTICE_RULESET ?? "balance");
   const practiceBaseUrl = `http://localhost:${port}`;
 
-  const manager = new GameManager();
+  const manager: GameRegistry = new InMemoryGameRegistry();
   const practiceClient = createPracticeClient();
   const definitions = selectPracticeScenarios(buildPracticeScenarioDefinitions(), process.env.PRACTICE_SCENARIO ?? "practice1");
   const games = definitions.map((definition) => ({

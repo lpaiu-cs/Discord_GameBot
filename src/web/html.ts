@@ -25,7 +25,7 @@ export function renderDashboardPage(initialState: DashboardStatePayload, csrfTok
     </div>
     <div class="toast-container" id="toast-container"></div>
     <script id="initial-state" type="application/json">${stateJson}</script>
-    <script src="/client/app.js"></script>
+    <script type="module" src="/client/app.js"></script>
   </body>
 </html>`;
   }

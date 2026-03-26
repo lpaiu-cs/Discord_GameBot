@@ -51,7 +51,7 @@ interface NightSelectionResult {
   payload?: unknown;
 }
 
-const PHASE_LABELS: Record<Phase, string> = {
+export const PHASE_LABELS: Record<Phase, string> = {
   lobby: "로비",
   night: "밤",
   discussion: "낮 토론",
@@ -61,11 +61,11 @@ const PHASE_LABELS: Record<Phase, string> = {
   ended: "종료",
 };
 
-const NIGHT_SECONDS = 25;
-const FIRST_NIGHT_EXTRA_SECONDS = 15;
-const DISCUSSION_SECONDS_PER_PLAYER = 15;
-const VOTE_SECONDS = 15;
-const DEFENSE_SECONDS = 15;
+export const NIGHT_SECONDS = 25;
+export const FIRST_NIGHT_EXTRA_SECONDS = 15;
+export const DISCUSSION_SECONDS_PER_PLAYER = 15;
+export const VOTE_SECONDS = 15;
+export const DEFENSE_SECONDS = 15;
 const AFTERMATH_SELECTION_SECONDS = 15;
 
 const DAY_BREAK_LABELS = ["", "첫째 날", "둘째 날", "셋째 날", "넷째 날", "다섯째 날", "여섯째 날", "일곱째 날", "여덟째 날"];
@@ -77,7 +77,7 @@ interface PromptDefinition {
   targets: string[];
 }
 
-interface AftermathChoice {
+export interface AftermathChoice {
   token: number;
   actorId: string;
   action: "mediumAscend" | "priestRevive";
@@ -131,11 +131,19 @@ interface QueuedAudioCue extends VisibleAudioCue {
   recipientIds: string[] | null;
 }
 
-export class GameManager {
+export interface GameRegistry {
+  onGameStateChange?: (gameId: string) => void;
+  get(guildId: string): MafiaGame | undefined;
+  findByGameId(gameId: string): MafiaGame | undefined;
+  create(guild: Guild, channelId: string, host: GuildMember, ruleset: Ruleset): MafiaGame;
+  delete(guildId: string): void;
+}
+
+export class InMemoryGameRegistry implements GameRegistry {
   private readonly games = new Map<string, MafiaGame>();
   public onGameStateChange?: (gameId: string) => void;
 
-  constructor(private readonly onEnded?: (game: MafiaGame) => void) {}
+  constructor(public readonly onEnded?: (game: MafiaGame) => void) {}
 
   get(guildId: string): MafiaGame | undefined {
     return this.games.get(guildId);
@@ -227,7 +235,7 @@ export class MafiaGame {
     channelId: string,
     host: GuildMember,
     ruleset: Ruleset,
-    private readonly onEnded: (guildId: string) => void,
+    public readonly onEnded: (guildId: string) => void,
     readonly deliveryMode: GameDeliveryMode = "discord-dm",
     public onStateChange?: (game: MafiaGame) => void,
   ) {
@@ -303,7 +311,7 @@ export class MafiaGame {
     this.bumpStateVersion();
   }
 
-  private setPublicLines(lines: string[], chatLines: string[] = lines): void {
+  public setPublicLines(lines: string[], chatLines: string[] = lines): void {
     this.lastPublicLines = [...lines];
     for (const line of chatLines) {
       this.appendSystemChat("public", line);
@@ -311,18 +319,18 @@ export class MafiaGame {
     this.bumpStateVersion();
   }
 
-  private appendPublicLine(line: string): void {
+  public appendPublicLine(line: string): void {
     this.lastPublicLines = [...this.lastPublicLines, line];
     this.appendSystemChat("public", line);
     this.bumpStateVersion();
   }
 
-  private appendPublicActivityLog(line: string): void {
+  public appendPublicActivityLog(line: string): void {
     this.appendSystemChat("public", line);
     this.bumpStateVersion();
   }
 
-  private appendSystemChat(channel: WebChatChannel, content: string): WebChatMessage {
+  public appendSystemChat(channel: WebChatChannel, content: string): WebChatMessage {
     const message: WebChatMessage = {
       id: `${Date.now().toString(36)}-${Math.floor(Math.random() * 9999)
         .toString()
@@ -913,587 +921,67 @@ export class MafiaGame {
     this.statusMessageId = message.id;
   }
 
-  private async beginNight(client: Client): Promise<void> {
-    this.clearTimer();
-    this.clearPendingAftermathChoice();
-    this.phase = "night";
-    this.nightNumber += 1;
-    this.currentTrialTargetId = null;
-    this.dayVotes.clear();
-    this.trialVotes.clear();
-    this.pendingTrialBurns.clear();
-    this.nightActions.clear();
-    this.bonusNightActions.clear();
-    this.spyBonusGrantedTonight.clear();
-    this.blockedTonightTargetId = this.pendingSeductionTargetId;
-    this.pendingSeductionTargetId = null;
-    const nightDurationMs = this.nightNumber === 1 ? (NIGHT_SECONDS + FIRST_NIGHT_EXTRA_SECONDS) * 1_000 : NIGHT_SECONDS * 1_000;
-    this.phaseContext = this.newPhaseContext(nightDurationMs);
-    const lines = ["밤이 되었습니다."];
-    if (this.blockedTonightTargetId) {
-      lines.push(`${this.getPlayerOrThrow(this.blockedTonightTargetId).displayName} 님은 오늘 밤 유혹 상태입니다.`);
-    }
-    this.setPublicLines(lines);
-
-    await this.syncSecretChannels(client);
-    await this.sendNightPrompts(client);
-    await this.sendPhaseMessage(client, {
-      title: `${this.nightNumber}번째 밤`,
-      description:
-        this.deliveryMode === "web"
-          ? "웹 대시보드에서 개인 행동과 비밀 채팅을 진행해 주세요."
-          : "개인 DM으로 행동을 제출해 주세요. 공개 채널에서는 결과만 안내합니다.",
-    });
-    await this.sendOrUpdateStatus(client);
-    this.restartTimer(client, nightDurationMs, () => this.finishNight(client));
+  public async beginNight(client: Client): Promise<void> {
+      return require("./phase").startNight(this, client);
   }
 
-  private async finishNight(client: Client): Promise<void> {
-    this.requirePhase("night");
-    this.clearTimer();
-
-    const summary = await this.resolveNight(client);
-    this.dayNumber += 1;
-    this.bulliedToday = new Set(this.bulliedNextDay);
-    this.bulliedNextDay.clear();
-    this.blockedTonightTargetId = null;
-    await this.syncSecretChannels(client);
-
-    const winner = this.getWinner();
-    if (winner) {
-      this.phase = "ended";
-      this.phaseContext = null;
-      this.endedWinner = winner;
-      this.endedReason = `${winner} 승리`;
-      this.appendPublicLine(`${winner} 승리`);
-      await this.sendPhaseMessage(client, {
-        title: "게임 종료",
-        description: `${winner} 승리`,
-        extraLines: summary.publicLines,
-      });
-      await this.sendOrUpdateStatus(client);
-      await this.lockOrDeleteSecretChannels(client);
-      this.onEnded(this.guildId);
-      return;
-    }
-
-    await this.beginDiscussion(client, summary.publicLines);
+  public async finishNight(client: Client): Promise<void> {
+      return require("./phase").finishNight(this, client);
   }
 
-  private async beginDiscussion(client: Client, morningLines: string[]): Promise<void> {
-    this.clearTimer();
-    this.phase = "discussion";
-    const duration = Math.max(this.alivePlayers.length, 1) * DISCUSSION_SECONDS_PER_PLAYER * 1_000;
-    this.phaseContext = this.newPhaseContext(duration);
-    const daybreakLine = `${formatDayBreakLabel(this.dayNumber)}이 밝았습니다.`;
-    const publicLines = [daybreakLine, ...morningLines];
-    this.setPublicLines(publicLines, [daybreakLine]);
-
-    await this.syncSecretChannels(client);
-    await this.sendPhaseMessage(client, {
-      title: `${this.dayNumber}번째 낮`,
-      description: "토론 시간입니다. 살아 있는 플레이어는 한 번씩 시간을 늘리거나 줄일 수 있습니다.",
-      components: this.deliveryMode === "web" ? [] : [this.buildTimeControls()],
-      extraLines: publicLines,
-    });
-    await this.sendReporterPublishPrompt(client);
-    await this.sendOrUpdateStatus(client);
-    this.restartTimer(client, duration, () => this.finishDiscussion(client));
+  public async beginDiscussion(client: Client, morningLines: string[]): Promise<void> {
+      return require("./phase").startDiscussion(this, client, morningLines);
   }
 
-  private async finishDiscussion(client: Client): Promise<void> {
-    this.requirePhase("discussion");
-    this.clearTimer();
-    await this.beginVote(client);
+  public async finishDiscussion(client: Client): Promise<void> {
+      return require("./phase").finishDiscussion(this, client);
   }
 
-  private async beginVote(client: Client): Promise<void> {
-    this.phase = "vote";
-    this.phaseContext = this.newPhaseContext(VOTE_SECONDS * 1_000);
-    this.dayVotes.clear();
-    for (const player of this.players.values()) {
-      player.voteLockedToday = false;
-    }
-    this.setPublicLines(["투표 시간입니다."]);
-
-    await this.sendVotePrompt(client);
-    await this.sendMadamPrompt(client);
-    await this.sendOrUpdateStatus(client);
-    this.restartTimer(client, VOTE_SECONDS * 1_000, () => this.finishVote(client));
+  public async beginVote(client: Client): Promise<void> {
+      return require("./phase").startVote(this, client);
   }
 
-  private async finishVote(client: Client): Promise<void> {
-    this.requirePhase("vote");
-    this.clearTimer();
-
-    const tallied = new Map<string, number>();
-    for (const [voterId, targetId] of this.dayVotes.entries()) {
-      const voter = this.getPlayer(voterId);
-      const target = this.getPlayer(targetId);
-      if (!voter || !voter.alive || this.bulliedToday.has(voterId) || !target || !target.alive) {
-        continue;
-      }
-
-      tallied.set(target.userId, (tallied.get(target.userId) ?? 0) + this.getVoteWeight(voter));
-    }
-
-    const ranked = [...tallied.entries()].sort((left, right) => right[1] - left[1]);
-    if (ranked.length === 0) {
-      this.setPublicLines(["아무도 투표하지 않아 바로 다음 밤으로 넘어갑니다."]);
-      await this.beginNight(client);
-      return;
-    }
-
-    const [topTargetId, topVotes] = ranked[0];
-    const isTie = ranked.length > 1 && ranked[1][1] === topVotes;
-    if (isTie) {
-      this.setPublicLines(["동률 최다 득표가 발생해 처형 없이 다음 밤으로 넘어갑니다."]);
-      await this.beginNight(client);
-      return;
-    }
-
-    this.currentTrialTargetId = topTargetId;
-    this.setPublicLines([
-      `${this.getPlayerOrThrow(topTargetId).displayName} 님이 최다 득표(${topVotes}표)를 받아 최후의 반론에 올라갑니다.`,
-    ]);
-    await this.beginDefense(client, topTargetId);
+  public async finishVote(client: Client): Promise<void> {
+      return require("./phase").finishVote(this, client);
   }
 
-  private async beginDefense(client: Client, targetId: string): Promise<void> {
-    this.phase = "defense";
-    this.phaseContext = this.newPhaseContext(DEFENSE_SECONDS * 1_000);
-    this.currentTrialTargetId = targetId;
-
-    await this.sendPhaseMessage(client, {
-      title: "최후의 반론",
-      description: `${this.getPlayerOrThrow(targetId).displayName} 님만 발언하는 단계입니다.`,
-      extraLines: this.lastPublicLines,
-    });
-
-    if (this.isAliveRole(targetId, "terrorist")) {
-      await this.sendTerrorBurnPrompt(client, targetId);
-    }
-
-    await this.sendOrUpdateStatus(client);
-    this.restartTimer(client, DEFENSE_SECONDS * 1_000, () => this.finishDefense(client));
+  public async beginDefense(client: Client, targetId: string): Promise<void> {
+      return require("./phase").startDefense(this, client, targetId);
   }
 
-  private async finishDefense(client: Client): Promise<void> {
-    this.requirePhase("defense");
-    this.clearTimer();
-    await this.beginTrial(client);
+  public async finishDefense(client: Client): Promise<void> {
+      return require("./phase").finishDefense(this, client);
   }
 
-  private async beginTrial(client: Client): Promise<void> {
-    if (!this.currentTrialTargetId) {
-      throw new Error("찬반 투표 대상이 없습니다.");
-    }
-
-    this.phase = "trial";
-    this.phaseContext = this.newPhaseContext(config.trialVoteSeconds * 1_000);
-    this.trialVotes.clear();
-
-    await this.sendPhaseMessage(client, {
-      title: "찬반 투표",
-      description: `${this.getPlayerOrThrow(this.currentTrialTargetId).displayName} 님을 처형할지 결정합니다.`,
-      components: this.deliveryMode === "web" ? [] : [this.buildTrialControls()],
-      extraLines: this.lastPublicLines,
-    });
-    await this.sendOrUpdateStatus(client);
-    this.restartTimer(client, config.trialVoteSeconds * 1_000, () => this.finishTrial(client));
+  public async beginTrial(client: Client): Promise<void> {
+      return require("./phase").startTrial(this, client);
   }
 
-  private async finishTrial(client: Client): Promise<void> {
-    this.requirePhase("trial");
-    this.clearTimer();
-
-    if (!this.currentTrialTargetId) {
-      throw new Error("처형 대상이 없습니다.");
-    }
-
-    const totalWeight = this.alivePlayers.reduce((sum, player) => sum + this.getVoteWeight(player), 0);
-    let yesWeight = 0;
-    for (const player of this.alivePlayers) {
-      if (this.bulliedToday.has(player.userId)) {
-        continue;
-      }
-
-      if (this.trialVotes.get(player.userId) === "yes") {
-        yesWeight += this.getVoteWeight(player);
-      }
-    }
-
-    const convict = yesWeight >= Math.ceil(totalWeight / 2);
-    const target = this.getPlayerOrThrow(this.currentTrialTargetId);
-    const lines: string[] = [`찬성 ${yesWeight} / 전체 ${totalWeight} 표`];
-
-    if (!convict) {
-      lines.push("반대가 더 많아 처형되지 않았습니다.");
-      this.setPublicLines(lines);
-      await this.beginNight(client);
-      return;
-    }
-
-    if (target.role === "politician" && !this.isPoliticianEffectBlocked(target.userId)) {
-      this.queueAudioCue("gavel");
-      lines.push("정치인은 투표 처형되지 않습니다.");
-      this.setPublicLines(lines);
-      await this.beginNight(client);
-      return;
-    }
-
-    this.killPlayer(target.userId, "낮 투표 처형");
-    lines.push(`${target.displayName} 님이 처형되었습니다.`);
-
-    if (target.role === "terrorist") {
-      const burn = this.pendingTrialBurns.get(target.userId);
-      if (burn) {
-        const burnTarget = this.getPlayer(burn.targetId);
-        if (burnTarget && burnTarget.alive && getTeam(burnTarget.role) !== getTeam(target.role)) {
-          this.killPlayer(burnTarget.userId, "테러리스트 산화");
-          this.queueAudioCue("explosion");
-          lines.push(`${burnTarget.displayName} 님이 테러리스트의 산화에 휘말렸습니다.`);
-        }
-      }
-    }
-
-    this.setPublicLines(lines);
-    await this.syncSecretChannels(client);
-    const winner = this.getWinner();
-    if (winner) {
-      this.phase = "ended";
-      this.phaseContext = null;
-      this.endedWinner = winner;
-      this.endedReason = `${winner} 승리`;
-      this.appendPublicLine(`${winner} 승리`);
-      await this.sendPhaseMessage(client, {
-        title: "게임 종료",
-        description: `${winner} 승리`,
-        extraLines: lines,
-      });
-      await this.sendOrUpdateStatus(client);
-      await this.lockOrDeleteSecretChannels(client);
-      this.onEnded(this.guildId);
-      return;
-    }
-
-    await this.beginNight(client);
+  public async finishTrial(client: Client): Promise<void> {
+      return require("./phase").finishTrial(this, client);
   }
 
-  private async resolveNight(client: Client): Promise<ResolutionSummary> {
-    const summary: ResolutionSummary = { publicLines: [], privateLines: [] };
-    const nightDeathIds = new Set<string>();
-    const markNightDeath = (userId: string, reason: string): void => {
-      const player = this.getPlayer(userId);
-      if (!player || !player.alive) {
-        return;
-      }
-
-      this.killPlayer(userId, reason);
-      nightDeathIds.add(userId);
-    };
-
-    const mafiaVotes = [...this.nightActions.values()].filter((action) => action.action === "mafiaKill");
-    const mafiaResult = this.resolveMafiaKill(mafiaVotes);
-    const protectedId = this.findActorTarget("doctorProtect");
-    const beastAction = this.findActionByRole("beastman");
-    const thugAction = this.findActionByRole("thug");
-    const reporterAction = this.findActionByRole("reporter");
-    const spyAction = this.findActionByRole("spy");
-    const policeAction = this.findActionByRole("police");
-    const detectiveAction = this.findActionByRole("detective");
-    const terroristAction = this.findActionByRole("terrorist");
-
-    if (terroristAction) {
-      this.getPlayerOrThrow(terroristAction.actorId).terrorMarkId = terroristAction.targetId;
-    }
-
-    const spyActions = [spyAction, this.findBonusActionByRole("spy")].filter((action): action is NightActionRecord => Boolean(action));
-    for (const action of spyActions) {
-      this.appendSpyInspectionResult(summary, action);
-    }
-
-    if (policeAction) {
-      const target = this.getPlayerOrThrow(policeAction.targetId);
-      summary.privateLines.push({
-        userId: policeAction.actorId,
-        line: `조사 결과: ${target.displayName} 님은 ${target.role === "mafia" ? "마피아입니다." : "마피아가 아닙니다."}`,
-      });
-    }
-
-    if (detectiveAction) {
-      const trackedAction = this.findSubmittedActionForActor(detectiveAction.targetId);
-      summary.privateLines.push({
-        userId: detectiveAction.actorId,
-        line: trackedAction
-          ? `${this.getPlayerOrThrow(detectiveAction.targetId).displayName} 님은 ${this.getPlayerOrThrow(trackedAction.targetId).displayName} 님을 선택했습니다.`
-          : `${this.getPlayerOrThrow(detectiveAction.targetId).displayName} 님은 오늘 밤 눈에 띄는 행동을 하지 않았습니다.`,
-      });
-    }
-
-    if (thugAction) {
-      this.bulliedNextDay.add(thugAction.targetId);
-    }
-
-    let mafiaVictimId: string | null = mafiaResult.targetId;
-    let mafiaVictimResolved = false;
-    let actualMafiaVictimId: string | null = null;
-
-    if (mafiaVictimId) {
-      const target = this.getPlayerOrThrow(mafiaVictimId);
-      // if (target.role === "beastman" && this.ruleset === "balance") {
-      if (target.role === "beastman") {
-        this.contactPlayer(target.userId);
-        mafiaVictimId = null;
-        mafiaVictimResolved = true;
-        summary.privateLines.push({
-          userId: target.userId,
-          line: "회피가 발동해 살아남았고, 즉시 마피아팀과 접선했습니다.",
-        });
-      }
-    }
-
-    if (mafiaVictimId && !mafiaVictimResolved) {
-      const redirected = this.resolveLoverRedirect(mafiaVictimId, summary, mafiaResult.killerId);
-      const finalVictimId = redirected ?? mafiaVictimId;
-      const finalVictim = this.getPlayerOrThrow(finalVictimId);
-      // const soldierBlocked =
-      //   this.ruleset === "balance" &&
-      //   this.blockedTonightTargetId === finalVictimId &&
-      //   finalVictim.role === "soldier";
-      const soldierBlocked = this.blockedTonightTargetId === finalVictimId && finalVictim.role === "soldier";
-
-      if (protectedId === finalVictimId) {
-        this.queueAudioCue("doctor_save");
-        summary.publicLines.push("의사의 치료로 아무도 죽지 않았습니다.");
-      } else if (finalVictim.role === "soldier" && !finalVictim.soldierUsed && !soldierBlocked) {
-        finalVictim.soldierUsed = true;
-        summary.publicLines.push("군인의 방탄이 발동해 아무도 죽지 않았습니다.");
-      } else {
-        markNightDeath(finalVictimId, "마피아 처형");
-        actualMafiaVictimId = finalVictimId;
-        this.queueAudioCue("gunshots");
-        summary.publicLines.push(`${finalVictim.displayName} 님이 밤사이 사망했습니다.`);
-
-        if (finalVictim.role === "terrorist" && finalVictim.terrorMarkId && finalVictim.terrorMarkId === mafiaResult.killerId) {
-          const killer = mafiaResult.killerId ? this.getPlayer(mafiaResult.killerId) : undefined;
-          if (killer && killer.alive) {
-            markNightDeath(killer.userId, "테러리스트 자폭");
-            this.queueAudioCue("explosion");
-            summary.publicLines.push(`${killer.displayName} 님이 테러리스트의 자폭에 휘말렸습니다.`);
-          }
-        }
-      }
-    }
-
-    if (
-      actualMafiaVictimId &&
-      beastAction &&
-      beastAction.action === "beastMark" &&
-      beastAction.targetId === actualMafiaVictimId
-    ) {
-      this.contactPlayer(beastAction.actorId);
-      summary.privateLines.push({
-        userId: beastAction.actorId,
-        line: "표시한 대상이 실제로 마피아에게 살해되어 마피아팀과 접선했습니다.",
-      });
-    }
-
-    if (beastAction && beastAction.action === "beastKill" && !this.hasOtherAliveMafiaTeam(beastAction.actorId)) {
-      const target = this.getPlayer(beastAction.targetId);
-      if (target && target.alive) {
-        markNightDeath(target.userId, "짐승인간 처형");
-        this.queueAudioCue("beast_howling");
-        summary.publicLines.push(`${target.displayName} 님이 밤사이 사망했습니다.`);
-      }
-    }
-
-    if (this.nightNumber === 1) {
-      this.applyGraverobber(summary, actualMafiaVictimId);
-    }
-
-    if (reporterAction) {
-      const target = this.getPlayer(reporterAction.targetId);
-      const actor = this.getPlayerOrThrow(reporterAction.actorId);
-      const publishFromDay = Math.max(2, this.dayNumber + 1);
-      actor.reporterUsed = true;
-
-      if (target && target.alive) {
-        this.pendingArticle = {
-          actorId: reporterAction.actorId,
-          targetId: target.userId,
-          role: target.role,
-          publishFromDay,
-        };
-        summary.privateLines.push({
-          userId: reporterAction.actorId,
-          line: `${target.displayName} 님의 기사를 준비했습니다. 공개 가능 시점은 ${publishFromDay}번째 낮입니다.`,
-        });
-      } else {
-        summary.privateLines.push({
-          userId: reporterAction.actorId,
-          line: "취재 대상이 밤사이 사망해 기사 작성에 실패했습니다.",
-        });
-      }
-    }
-
-    await this.syncSecretChannels(client);
-
-    const medium = this.alivePlayers.find((player) => player.role === "medium");
-    if (medium && !this.isBlockedTonight(medium.userId)) {
-      const mediumTargetId = await this.requestAftermathTarget(
-        client,
-        medium.userId,
-        "mediumAscend",
-        "영매 성불",
-        "죽은 플레이어 한 명을 골라 직업을 확인하고 성불시킵니다.",
-        this.deadPlayers.filter((target) => !target.ascended).map((target) => target.userId),
-      );
-
-      if (mediumTargetId) {
-        const target = this.getPlayerOrThrow(mediumTargetId);
-        target.ascended = true;
-        summary.privateLines.push({
-          userId: medium.userId,
-          line: `${target.displayName} 님의 직업은 ${getRoleLabel(target.role)}였습니다.`,
-        });
-      }
-    }
-
-    const priest = this.alivePlayers.find((player) => player.role === "priest" && !player.priestUsed);
-    if (priest && !this.isBlockedTonight(priest.userId)) {
-      const priestTargetId = await this.requestAftermathTarget(
-        client,
-        priest.userId,
-        "priestRevive",
-        "성직자 부활",
-        "이번 밤에 죽은 플레이어 한 명을 골라 부활시킵니다.",
-        [...nightDeathIds],
-      );
-
-      if (priestTargetId) {
-        priest.priestUsed = true;
-        const target = this.getPlayerOrThrow(priestTargetId);
-        // const blockedByMedium = this.ruleset === "balance" && target.ascended;
-        const blockedByMedium = target.ascended;
-        if (blockedByMedium) {
-          summary.privateLines.push({
-            userId: priest.userId,
-            line: "영매가 먼저 성불시킨 대상이라 부활이 실패했습니다.",
-          });
-        } else if (!target.alive) {
-          this.revivePlayer(target.userId);
-          this.queueAudioCue("revive");
-          summary.publicLines.push(`${target.displayName} 님이 성직자의 힘으로 부활했습니다.`);
-        }
-      }
-    }
-
-    if (summary.publicLines.length === 0) {
-      summary.publicLines.push("조용하게 밤이 지나갔습니다.");
-    }
-
-    for (const line of summary.privateLines) {
-      await this.safeSendDm(client, line.userId, line.line);
-    }
-
-    await this.syncSecretChannels(client);
-    this.setPublicLines(summary.publicLines);
-    return summary;
+  public async resolveNight(client: Client): Promise<ResolutionSummary> {
+      return require("./resolution").resolveNight(this, client);
   }
 
-  private resolveMafiaKill(records: NightActionRecord[]): { targetId: string | null; killerId: string | null } {
-    const eligible = records.filter((record) => {
-      const actor = this.getPlayer(record.actorId);
-      return actor && actor.alive && actor.role === "mafia" && !this.isBlockedTonight(actor.userId);
-    });
-
-    if (eligible.length === 0) {
-      return { targetId: null, killerId: null };
-    }
-
-    // 마지막에 제출된 행동이 최종 타겟을 결정한다.
-    const lastSubmitted = eligible.sort((left, right) => right.submittedAt - left.submittedAt)[0];
-    return { targetId: lastSubmitted.targetId, killerId: lastSubmitted.actorId };
+  public resolveMafiaKill(records: NightActionRecord[]): { targetId: string | null; killerId: string | null } {
+      return require("./resolution").resolveMafiaKill(this, records);
   }
 
-  private resolveLoverRedirect(targetId: string, summary: ResolutionSummary, killerId: string | null): string | null {
-    const target = this.getPlayerOrThrow(targetId);
-    if (target.role !== "lover" || !target.loverId) {
-      return null;
-    }
-
-    const partner = this.getPlayer(target.loverId);
-    if (!partner || !partner.alive) {
-      return null;
-    }
-
-    // if (this.ruleset === "balance" && this.blockedTonightTargetId === partner.userId) {
-    if (this.blockedTonightTargetId === partner.userId) {
-      return null;
-    }
-
-    if (killerId) {
-      summary.privateLines.push({
-        userId: target.userId,
-        line: `${this.getPlayerOrThrow(killerId).displayName} 님이 당신을 노린 마피아였습니다.`,
-      });
-    }
-    return partner.userId;
+  public resolveLoverRedirect(targetId: string, summary: ResolutionSummary, killerId: string | null): string | null {
+      return require("./resolution").resolveLoverRedirect(this, targetId, summary, killerId);
   }
 
-  private applyGraverobber(summary: ResolutionSummary, mafiaVictimId: string | null): void {
-    if (!mafiaVictimId) {
-      return;
-    }
-
-    const graverobber = this.alivePlayers.find((player) => player.role === "graverobber");
-    const victim = this.getPlayer(mafiaVictimId);
-    if (!graverobber || !victim) {
-      return;
-    }
-
-    const stolenRole = victim.role;
-    graverobber.role = stolenRole;
-    victim.role = normalizeStolenRole(stolenRole, this.ruleset);
-    summary.privateLines.push({
-      userId: graverobber.userId,
-      line: `도굴 성공: ${victim.displayName} 님의 직업 ${getRoleLabel(stolenRole)}를 얻었습니다.`,
-    });
-
-    if (stolenRole === "lover" && victim.loverId) {
-      const partnerId = victim.loverId;
-      victim.loverId = undefined;
-      graverobber.loverId = partnerId;
-      const partner = this.getPlayer(partnerId);
-      if (partner) {
-        partner.loverId = graverobber.userId;
-        this.loverPair = [graverobber.userId, partner.userId];
-      }
-    }
+  public applyGraverobber(summary: ResolutionSummary, mafiaVictimId: string | null): void {
+      return require("./resolution").applyGraverobber(this, summary, mafiaVictimId);
   }
 
-  private appendSpyInspectionResult(summary: ResolutionSummary, action: NightActionRecord): void {
-    const target = this.getPlayerOrThrow(action.targetId);
-    if (target.role === "soldier") {
-      summary.privateLines.push({
-        userId: action.actorId,
-        line: `${target.displayName} 님은 군인이어서 조사 결과를 끝까지 확인하지 못했습니다.`,
-      });
-      summary.privateLines.push({
-        userId: target.userId,
-        line: `${this.getPlayerOrThrow(action.actorId).displayName} 님이 당신을 조사했습니다. 군인의 효과로 조사 부가효과가 무효화됩니다.`,
-      });
-      return;
-    }
-
-    summary.privateLines.push({
-      userId: action.actorId,
-      line: `조사 결과: ${target.displayName} 님은 ${getRoleLabel(target.role)}입니다.`,
-    });
+  public appendSpyInspectionResult(summary: ResolutionSummary, action: NightActionRecord): void {
+      return require("./resolution").appendSpyInspectionResult(this, summary, action);
   }
 
-  private async sendVotePrompt(client: Client): Promise<void> {
+  public async sendVotePrompt(client: Client): Promise<void> {
     await this.sendPhaseMessage(client, {
       title: "투표 시간",
       description:
@@ -1503,7 +991,7 @@ export class MafiaGame {
     });
   }
 
-  private async sendMadamPrompt(client: Client): Promise<void> {
+  public async sendMadamPrompt(client: Client): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1523,7 +1011,7 @@ export class MafiaGame {
     await dm.send(this.buildMadamPayload(madam));
   }
 
-  private async sendReporterPublishPrompt(client: Client): Promise<void> {
+  public async sendReporterPublishPrompt(client: Client): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1542,7 +1030,7 @@ export class MafiaGame {
     await dm.send(this.buildReporterPublishPayload());
   }
 
-  private async sendTerrorBurnPrompt(client: Client, targetId: string): Promise<void> {
+  public async sendTerrorBurnPrompt(client: Client, targetId: string): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1558,7 +1046,7 @@ export class MafiaGame {
     await dm.send(this.buildTerrorBurnPayload(target));
   }
 
-  private async sendNightPrompts(client: Client): Promise<void> {
+  public async sendNightPrompts(client: Client): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1578,7 +1066,7 @@ export class MafiaGame {
     }
   }
 
-  private getNightPrompt(userId: string): PromptDefinition | null {
+  public getNightPrompt(userId: string): PromptDefinition | null {
     const player = this.getPlayerOrThrow(userId);
     if (!player.alive) {
       return null;
@@ -1673,7 +1161,7 @@ export class MafiaGame {
     }
   }
 
-  private async requestAftermathTarget(
+  public async requestAftermathTarget(
     client: Client,
     actorId: string,
     action: "mediumAscend" | "priestRevive",
@@ -1734,7 +1222,7 @@ export class MafiaGame {
     });
   }
 
-  private async prepareSecretChannels(client: Client): Promise<void> {
+  public async prepareSecretChannels(client: Client): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1793,7 +1281,7 @@ export class MafiaGame {
     await this.syncSecretChannels(client);
   }
 
-  private async lockOrDeleteSecretChannels(client: Client): Promise<void> {
+  public async lockOrDeleteSecretChannels(client: Client): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1830,7 +1318,7 @@ export class MafiaGame {
     }
   }
 
-  private async syncSecretChannels(client: Client): Promise<void> {
+  public async syncSecretChannels(client: Client): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1861,7 +1349,7 @@ export class MafiaGame {
     }
   }
 
-  private async syncChannelMembers(
+  public async syncChannelMembers(
     channel: TextChannel,
     visibleIds: string[],
     sendEnabled: boolean,
@@ -1879,7 +1367,7 @@ export class MafiaGame {
     }
   }
 
-  private async sendRoleCards(client: Client): Promise<void> {
+  public async sendRoleCards(client: Client): Promise<void> {
     if (this.deliveryMode === "web") {
       return;
     }
@@ -1891,7 +1379,7 @@ export class MafiaGame {
     }
   }
 
-  private buildRoleEmbed(player: PlayerState): EmbedBuilder {
+  public buildRoleEmbed(player: PlayerState): EmbedBuilder {
     const embed = new EmbedBuilder()
       .setColor(isMafiaTeam(player.role) ? Colors.DarkRed : Colors.Blurple)
       .setTitle(`당신의 직업은 ${getRoleLabel(player.role)}입니다.`)
@@ -1931,7 +1419,7 @@ export class MafiaGame {
     return embed;
   }
 
-  private buildLobbyEmbed(): EmbedBuilder {
+  public buildLobbyEmbed(): EmbedBuilder {
     return new EmbedBuilder()
       .setColor(Colors.Blurple)
       .setTitle("마피아42 시즌4 로비")
@@ -1955,7 +1443,7 @@ export class MafiaGame {
       .setFooter({ text: `게임 ID: ${this.id}` });
   }
 
-  private buildStatusEmbed(): EmbedBuilder {
+  public buildStatusEmbed(): EmbedBuilder {
     const alive = this.alivePlayers
       .map((player, index) => `${index + 1}. ${player.displayName}${this.bulliedToday.has(player.userId) ? " (협박)" : ""}`)
       .join("\n") || "없음";
@@ -1985,7 +1473,7 @@ export class MafiaGame {
       .setFooter({ text: `게임 ID: ${this.id}` });
   }
 
-  private buildLobbyControls(): ActionRowBuilder<ButtonBuilder> {
+  public buildLobbyControls(): ActionRowBuilder<ButtonBuilder> {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`lobby:${this.id}:join`).setLabel("참가").setStyle(ButtonStyle.Success),
       new ButtonBuilder().setCustomId(`lobby:${this.id}:leave`).setLabel("나가기").setStyle(ButtonStyle.Secondary),
@@ -1993,7 +1481,7 @@ export class MafiaGame {
     );
   }
 
-  private buildVoteControls(): ActionRowBuilder<StringSelectMenuBuilder> {
+  public buildVoteControls(): ActionRowBuilder<StringSelectMenuBuilder> {
     return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
       new StringSelectMenuBuilder()
         .setCustomId(`vote:${this.id}:${this.phaseContext?.token ?? 0}`)
@@ -2007,21 +1495,21 @@ export class MafiaGame {
     );
   }
 
-  private buildTrialControls(): ActionRowBuilder<ButtonBuilder> {
+  public buildTrialControls(): ActionRowBuilder<ButtonBuilder> {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`trial:${this.id}:${this.phaseContext?.token ?? 0}:yes`).setLabel("찬성").setStyle(ButtonStyle.Danger),
       new ButtonBuilder().setCustomId(`trial:${this.id}:${this.phaseContext?.token ?? 0}:no`).setLabel("반대").setStyle(ButtonStyle.Secondary),
     );
   }
 
-  private buildTimeControls(): ActionRowBuilder<ButtonBuilder> {
+  public buildTimeControls(): ActionRowBuilder<ButtonBuilder> {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
       new ButtonBuilder().setCustomId(`time:${this.id}:${this.phaseContext?.token ?? 0}:cut`).setLabel("-15초").setStyle(ButtonStyle.Secondary),
       new ButtonBuilder().setCustomId(`time:${this.id}:${this.phaseContext?.token ?? 0}:add`).setLabel("+15초").setStyle(ButtonStyle.Success),
     );
   }
 
-  private buildDirectActionPayload(player: PlayerState, selectedTargetId?: string) {
+  public buildDirectActionPayload(player: PlayerState, selectedTargetId?: string) {
     const prompt = this.getNightPrompt(player.userId);
     if (!prompt) {
       return {
@@ -2063,7 +1551,7 @@ export class MafiaGame {
     };
   }
 
-  private buildSpyBonusPayload(player: PlayerState, firstTargetId: string, secondTargetId?: string) {
+  public buildSpyBonusPayload(player: PlayerState, firstTargetId: string, secondTargetId?: string) {
     const targets = this.alivePlayers.filter((target) => target.userId !== player.userId).map((target) => target.userId);
     const contactLine = this.secretChannels.mafiaId ? `접선에 성공했습니다. 마피아 채널: <#${this.secretChannels.mafiaId}>` : "접선에 성공했습니다.";
 
@@ -2094,7 +1582,7 @@ export class MafiaGame {
     };
   }
 
-  private buildAftermathPayload(choice: AftermathChoice, selectedTargetId?: string) {
+  public buildAftermathPayload(choice: AftermathChoice, selectedTargetId?: string) {
     return {
       embeds: [
         new EmbedBuilder()
@@ -2126,7 +1614,7 @@ export class MafiaGame {
     };
   }
 
-  private buildMadamPayload(player: PlayerState, selectedTargetId?: string) {
+  public buildMadamPayload(player: PlayerState, selectedTargetId?: string) {
     const targets = this.alivePlayers.filter((target) => target.userId !== player.userId);
     return {
       embeds: [
@@ -2152,7 +1640,7 @@ export class MafiaGame {
     };
   }
 
-  private buildReporterPublishPayload() {
+  public buildReporterPublishPayload() {
     if (!this.pendingArticle) {
       throw new Error("공개할 기사가 없습니다.");
     }
@@ -2177,7 +1665,7 @@ export class MafiaGame {
     };
   }
 
-  private buildTerrorBurnPayload(player: PlayerState, selectedTargetId?: string) {
+  public buildTerrorBurnPayload(player: PlayerState, selectedTargetId?: string) {
     const targets = this.alivePlayers.filter((target) => target.userId !== player.userId);
     return {
       embeds: [
@@ -2203,7 +1691,7 @@ export class MafiaGame {
     };
   }
 
-  private async sendPhaseMessage(
+  public async sendPhaseMessage(
     client: Client,
     options: {
       title: string;
@@ -2239,7 +1727,7 @@ export class MafiaGame {
     this.phaseMessageId = message.id;
   }
 
-  private assignLovers(): void {
+  public assignLovers(): void {
     const lovers = [...this.players.values()].filter((player) => player.role === "lover");
     if (lovers.length === 2) {
       lovers[0].loverId = lovers[1].userId;
@@ -2248,7 +1736,7 @@ export class MafiaGame {
     }
   }
 
-  private contactPlayer(userId: string): void {
+  public contactPlayer(userId: string): void {
     const player = this.getPlayer(userId);
     if (!player) {
       return;
@@ -2258,24 +1746,24 @@ export class MafiaGame {
     this.contactedIds.add(userId);
   }
 
-  private isBlockedTonight(userId: string): boolean {
+  public isBlockedTonight(userId: string): boolean {
     return this.blockedTonightTargetId === userId;
   }
 
-  private isAliveRole(userId: string, role: Role): boolean {
+  public isAliveRole(userId: string, role: Role): boolean {
     const player = this.getPlayer(userId);
     return Boolean(player && player.alive && player.role === role);
   }
 
-  private getAliveMafia(): PlayerState[] {
+  public getAliveMafia(): PlayerState[] {
     return this.alivePlayers.filter((player) => isMafiaTeam(player.role));
   }
 
-  private hasOtherAliveMafiaTeam(userId: string): boolean {
+  public hasOtherAliveMafiaTeam(userId: string): boolean {
     return this.getAliveMafia().some((player) => player.userId !== userId);
   }
 
-  private getVoteWeight(player: PlayerState): number {
+  public getVoteWeight(player: PlayerState): number {
     if (player.role === "politician" && this.isPoliticianEffectBlocked(player.userId)) {
       return 1;
     }
@@ -2283,23 +1771,11 @@ export class MafiaGame {
     return player.role === "politician" ? 2 : 1;
   }
 
-  private getWinner(): string | null {
-    const alive = this.alivePlayers;
-    const mafiaHeads = alive.filter((player) => isMafiaTeam(player.role)).length;
-    const citizenHeads = alive.filter((player) => !isMafiaTeam(player.role)).length;
-
-    if (mafiaHeads === 0) {
-      return "시민팀";
-    }
-
-    if (mafiaHeads >= citizenHeads) {
-      return "마피아팀";
-    }
-
-    return null;
+  public getWinner(): string | null {
+      return require("./resolution").getWinner(this);
   }
 
-  private killPlayer(userId: string, reason: string): void {
+  public killPlayer(userId: string, reason: string): void {
     const player = this.getPlayerOrThrow(userId);
     if (!player.alive) {
       return;
@@ -2310,14 +1786,14 @@ export class MafiaGame {
     this.deadOrder.push(userId);
   }
 
-  private revivePlayer(userId: string): void {
+  public revivePlayer(userId: string): void {
     const player = this.getPlayerOrThrow(userId);
     player.alive = true;
     player.deadReason = undefined;
     player.ascended = false;
   }
 
-  private findActionByRole(role: Role): NightActionRecord | undefined {
+  public findActionByRole(role: Role): NightActionRecord | undefined {
     const actor = this.alivePlayers.find((player) => player.role === role);
     if (!actor) {
       return undefined;
@@ -2326,7 +1802,7 @@ export class MafiaGame {
     return this.nightActions.get(actor.userId);
   }
 
-  private findBonusActionByRole(role: Role): NightActionRecord | undefined {
+  public findBonusActionByRole(role: Role): NightActionRecord | undefined {
     const actor = this.alivePlayers.find((player) => player.role === role);
     if (!actor) {
       return undefined;
@@ -2335,7 +1811,7 @@ export class MafiaGame {
     return this.bonusNightActions.get(actor.userId);
   }
 
-  private findSubmittedActionForActor(userId: string): NightActionRecord | undefined {
+  public findSubmittedActionForActor(userId: string): NightActionRecord | undefined {
     const actions = [this.nightActions.get(userId), this.bonusNightActions.get(userId)].filter(
       (action): action is NightActionRecord => Boolean(action),
     );
@@ -2347,16 +1823,16 @@ export class MafiaGame {
     return actions.sort((left, right) => right.submittedAt - left.submittedAt)[0];
   }
 
-  private findActorTarget(actionType: NightActionType): string | null {
+  public findActorTarget(actionType: NightActionType): string | null {
     return [...this.nightActions.values()].find((action) => action.action === actionType)?.targetId ?? null;
   }
 
-  private isPoliticianEffectBlocked(userId: string): boolean {
+  public isPoliticianEffectBlocked(userId: string): boolean {
     // return this.ruleset === "balance" && this.pendingSeductionTargetId === userId;
     return this.pendingSeductionTargetId === userId;
   }
 
-  private getSecretChatAccess(channel: Exclude<WebChatChannel, "public">): {
+  public getSecretChatAccess(channel: Exclude<WebChatChannel, "public">): {
     readableIds: Set<string>;
     writableIds: Set<string>;
   } {
@@ -2423,7 +1899,7 @@ export class MafiaGame {
     }
   }
 
-  private queueAudioCue(key: AudioCueKey, recipientIds?: string[]): void {
+  public queueAudioCue(key: AudioCueKey, recipientIds?: string[]): void {
     const createdAt = Date.now();
     const dedupedRecipientIds = recipientIds?.length ? [...new Set(recipientIds)] : null;
     this.audioCues.push({
@@ -2437,7 +1913,7 @@ export class MafiaGame {
     this.pruneAudioCues();
   }
 
-  private pruneAudioCues(): void {
+  public pruneAudioCues(): void {
     const cutoff = Date.now() - 15 * 60_000;
     const recent = this.audioCues.filter((cue) => cue.createdAt >= cutoff);
     const limited = recent.slice(-96);
@@ -2445,33 +1921,33 @@ export class MafiaGame {
     this.audioCues.push(...limited);
   }
 
-  private requirePhase(expected: Phase): void {
+  public requirePhase(expected: Phase): void {
     if (this.phase !== expected) {
       throw new Error(`현재 단계는 ${PHASE_LABELS[this.phase]}입니다.`);
     }
   }
 
-  private readPhaseToken(customId: string): number {
+  public readPhaseToken(customId: string): number {
     return Number.parseInt(customId.split(":")[2] ?? "", 10);
   }
 
-  private requirePhaseToken(customId: string): void {
+  public requirePhaseToken(customId: string): void {
     this.requirePhaseTokenValue(this.readPhaseToken(customId));
   }
 
-  private requirePhaseTokenValue(token: number | undefined, message = "이미 만료된 상호작용입니다."): void {
+  public requirePhaseTokenValue(token: number | undefined, message = "이미 만료된 상호작용입니다."): void {
     if (!Number.isFinite(token) || token !== this.phaseContext?.token) {
       throw new Error(message);
     }
   }
 
-  private assertAllowedTarget(targetIds: string[], targetId: string, message = "선택할 수 없는 대상입니다."): void {
+  public assertAllowedTarget(targetIds: string[], targetId: string, message = "선택할 수 없는 대상입니다."): void {
     if (!targetIds.includes(targetId)) {
       throw new Error(message);
     }
   }
 
-  private validateNightSelection(actor: PlayerState, action: string | undefined, targetId: string): PromptDefinition {
+  public validateNightSelection(actor: PlayerState, action: string | undefined, targetId: string): PromptDefinition {
     const prompt = this.getNightPrompt(actor.userId);
     if (!prompt) {
       throw new Error("이번 밤에 사용할 수 있는 능력이 없습니다.");
@@ -2485,7 +1961,7 @@ export class MafiaGame {
     return prompt;
   }
 
-  private assertAliveParticipant(userId: string): PlayerState {
+  public assertAliveParticipant(userId: string): PlayerState {
     const player = this.getPlayer(userId);
     if (!player || !player.alive) {
       throw new Error("살아 있는 참가자만 사용할 수 있습니다.");
@@ -2494,19 +1970,19 @@ export class MafiaGame {
     return player;
   }
 
-  private newPhaseContext(durationMs: number): PhaseContext {
+  public newPhaseContext(durationMs: number): PhaseContext {
     const token = (this.phaseContext?.token ?? 0) + 1;
     return { token, startedAt: Date.now(), deadlineAt: Date.now() + durationMs };
   }
 
-  private clearTimer(): void {
+  public clearTimer(): void {
     if (this.phaseTimer) {
       clearTimeout(this.phaseTimer);
       this.phaseTimer = null;
     }
   }
 
-  private clearPendingAftermathChoice(): void {
+  public clearPendingAftermathChoice(): void {
     if (!this.pendingAftermathChoice) {
       return;
     }
@@ -2517,7 +1993,7 @@ export class MafiaGame {
     this.bumpStateVersion();
   }
 
-  private restartTimer(client: Client, durationMs: number, callback: () => Promise<void>): void {
+  public restartTimer(client: Client, durationMs: number, callback: () => Promise<void>): void {
     this.clearTimer();
     this.phaseTimer = setTimeout(() => {
       callback().catch((error: unknown) => {
@@ -2527,7 +2003,7 @@ export class MafiaGame {
     }, durationMs);
   }
 
-  private async safeSendDm(client: Client, userId: string, payload: string | { embeds: EmbedBuilder[] }): Promise<void> {
+  public async safeSendDm(client: Client, userId: string, payload: string | { embeds: EmbedBuilder[] }): Promise<void> {
     if (this.deliveryMode === "web") {
       this.appendPrivateLog(userId, stringifyPrivatePayload(payload));
       return;
@@ -2537,7 +2013,7 @@ export class MafiaGame {
     await user.send(payload as never);
   }
 
-  private async getPublicChannel(client: Client): Promise<TextChannel> {
+  public async getPublicChannel(client: Client): Promise<TextChannel> {
     const channel = await client.channels.fetch(this.channelId);
     if (!channel || channel.type !== ChannelType.GuildText) {
       throw new Error("공개 채널을 찾을 수 없습니다.");
@@ -2546,7 +2022,7 @@ export class MafiaGame {
     return channel as TextChannel;
   }
 
-  private async fetchSecretTextChannel(client: Client, channelId?: string): Promise<TextChannel | null> {
+  public async fetchSecretTextChannel(client: Client, channelId?: string): Promise<TextChannel | null> {
     if (!channelId) {
       return null;
     }
@@ -2559,7 +2035,7 @@ export class MafiaGame {
     return channel as TextChannel;
   }
 
-  private async fetchMessage(channel: TextBasedChannel, messageId: string): Promise<Message | null> {
+  public async fetchMessage(channel: TextBasedChannel, messageId: string): Promise<Message | null> {
     try {
       return await channel.messages.fetch(messageId);
     } catch {
@@ -2567,12 +2043,12 @@ export class MafiaGame {
     }
   }
 
-  private formatNames(userIds: string[]): string {
+  public formatNames(userIds: string[]): string {
     return userIds.map((userId) => this.getPlayerOrThrow(userId).displayName).join(", ");
   }
 }
 
-export function createGame(manager: GameManager, interaction: ChatInputCommandInteraction, ruleset: Ruleset): MafiaGame {
+export function createGame(manager: GameRegistry, interaction: ChatInputCommandInteraction, ruleset: Ruleset): MafiaGame {
   const guild = interaction.guild;
   const member = interaction.member as GuildMember | null;
   if (!guild || !member || !interaction.channelId) {
@@ -2621,7 +2097,7 @@ function resolveMemberDisplayName(member: GuildMember): string {
   return member.id;
 }
 
-function formatDayBreakLabel(dayNumber: number): string {
+export function formatDayBreakLabel(dayNumber: number): string {
   return DAY_BREAK_LABELS[dayNumber] ?? `${dayNumber}번째 날`;
 }
 

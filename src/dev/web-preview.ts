@@ -1,5 +1,5 @@
 import { Guild, GuildMember } from "discord.js";
-import { GameManager } from "../game/game";
+import { InMemoryGameRegistry, GameRegistry } from "../game/game";
 import { PlayerState, Role, Ruleset } from "../game/model";
 import { DashboardAccessService } from "../web/access";
 import { JoinTicketService } from "../web/join-ticket";
@@ -17,7 +17,7 @@ async function main(): Promise<void> {
   const role = readRole(process.env.PREVIEW_ROLE ?? "mafia");
   const previewBaseUrl = `http://localhost:${port}`;
 
-  const manager = new GameManager();
+  const manager: GameRegistry = new InMemoryGameRegistry();
   const guild = { id: "preview-guild" } as Guild;
   const host = createMember(PREVIEW_USER_ID, "개발자");
   const game = manager.create(guild, "preview-channel", host, ruleset);

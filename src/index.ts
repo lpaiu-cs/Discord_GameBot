@@ -14,7 +14,7 @@ import {
 import { config } from "./config";
 import { buildDashboardReply, buildDashboardWaitingReply } from "./discord/dashboard";
 import { mafiaCommand, registerCommands } from "./discord/commands";
-import { GameManager, MafiaGame, createGame } from "./game/game";
+import { GameRegistry, InMemoryGameRegistry, MafiaGame, createGame } from "./game/game";
 import { Ruleset } from "./game/model";
 import { DashboardAccessService } from "./web/access";
 import { JoinTicketService } from "./web/join-ticket";
@@ -28,7 +28,7 @@ const client = new Client({
 });
 
 const endedGameCleanupTimers = new Map<string, NodeJS.Timeout>();
-const manager = new GameManager((game) => {
+const manager: GameRegistry = new InMemoryGameRegistry((game: MafiaGame) => {
   scheduleEndedGameCleanup(game);
 });
 const joinTicketService = new JoinTicketService(config.joinTicketSecret);

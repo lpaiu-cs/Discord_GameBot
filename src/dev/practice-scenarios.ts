@@ -1,5 +1,5 @@
 import { Client, Guild, GuildMember } from "discord.js";
-import { GameManager, MafiaGame, WebChatChannel } from "../game/game";
+import { GameRegistry, MafiaGame, WebChatChannel } from "../game/game";
 import { PlayerState, Role, Ruleset } from "../game/model";
 
 type InternalGame = MafiaGame & Record<string, any>;
@@ -156,7 +156,7 @@ export function buildPracticeScenarioDefinitions(): PracticeScenarioDefinition[]
 }
 
 export function createPracticeGame(
-  manager: GameManager,
+  manager: GameRegistry,
   definition: PracticeScenarioDefinition,
   ruleset: Ruleset,
 ): { game: InternalGame } {
