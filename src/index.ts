@@ -19,7 +19,7 @@ import { Ruleset } from "./game/model";
 import { DashboardAccessService } from "./web/access";
 import { JoinTicketService } from "./web/join-ticket";
 import { FixedBaseUrlProvider, QuickTunnelProvider } from "./web/public-base-url";
-import { SessionStore } from "./web/session-store";
+import { SessionStore, InMemorySessionStore } from "./web/session-store";
 import { DashboardServer } from "./web/server";
 
 const client = new Client({
@@ -32,7 +32,7 @@ const manager = new GameManager((game) => {
   scheduleEndedGameCleanup(game);
 });
 const joinTicketService = new JoinTicketService(config.joinTicketSecret);
-const sessionStore = new SessionStore(config.webSessionSecret);
+const sessionStore = new InMemorySessionStore(config.webSessionSecret);
 const publicBaseUrlProvider =
   config.webMode === "quick_tunnel"
     ? new QuickTunnelProvider(config.webPort, config.quickTunnelEnabled)

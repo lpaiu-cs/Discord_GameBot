@@ -4,7 +4,7 @@ import { PlayerState, Role, Ruleset } from "../game/model";
 import { DashboardAccessService } from "../web/access";
 import { JoinTicketService } from "../web/join-ticket";
 import { FixedBaseUrlProvider } from "../web/public-base-url";
-import { SessionStore } from "../web/session-store";
+import { SessionStore, InMemorySessionStore } from "../web/session-store";
 import { DashboardServer } from "../web/server";
 
 const PREVIEW_USER_ID = "dev-user";
@@ -25,7 +25,7 @@ async function main(): Promise<void> {
   seedPreviewGame(game as any, role, phase);
 
   const joinTicketService = new JoinTicketService(process.env.JOIN_TICKET_SECRET ?? "preview-join-ticket-secret");
-  const sessionStore = new SessionStore(process.env.WEB_SESSION_SECRET ?? "preview-web-session-secret");
+  const sessionStore = new InMemorySessionStore(process.env.WEB_SESSION_SECRET ?? "preview-web-session-secret");
   const dashboardAccess = new DashboardAccessService(
     new FixedBaseUrlProvider(previewBaseUrl),
     joinTicketService,

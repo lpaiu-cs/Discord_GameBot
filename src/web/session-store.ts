@@ -9,7 +9,18 @@ export interface WebSession {
   csrfToken: string;
 }
 
-export class SessionStore {
+export interface SessionStore {
+  create(gameId: string, discordUserId: string): WebSession;
+  get(sessionId: string): WebSession | null;
+  touch(sessionId: string): WebSession | null;
+  invalidate(sessionId: string): void;
+  invalidateForGameUser(gameId: string, discordUserId: string): void;
+  invalidateGame(gameId: string): void;
+  serializeCookieValue(sessionId: string): string;
+  parseCookieValue(cookieValue: string): string | null;
+}
+
+export class InMemorySessionStore implements SessionStore {
   private readonly sessions = new Map<string, WebSession>();
   private readonly currentByGameUser = new Map<string, string>();
 

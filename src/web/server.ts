@@ -8,13 +8,13 @@ import { applyDashboardAction, DashboardActionRequest } from "./game-actions";
 import { renderDashboardPage } from "./html";
 import { JoinTicketService } from "./join-ticket";
 import { buildDashboardState } from "./presenter";
-import { SessionStore, WebSession } from "./session-store";
+import { InMemorySessionStore, WebSession } from "./session-store";
 
 interface DashboardServerOptions {
   client: Client;
   gameManager: GameManager;
   joinTicketService: JoinTicketService;
-  sessionStore: SessionStore;
+  sessionStore: InMemorySessionStore;
   port: number;
   secureCookies: boolean;
 }
@@ -123,6 +123,12 @@ export class DashboardServer {
         return;
       }
 
+      const clientMatch = pathname.match(/^\/client\/(.+?\.(?:js|css))$/u);
+      if (clientMatch && method === "GET") {
+        await this.handleClientAsset(response, clientMatch[1]);
+        return;
+      }
+
       if ((pathname === "/auth/exchange" || pathname === "/join") && method === "GET") {
         await this.handleExchange(request, response, url);
         return;
@@ -181,6 +187,28 @@ export class DashboardServer {
       this.sendJson(response, 404, { error: "리소스를 찾을 수 없습니다." });
     }
 
+  }
+
+  private async handleClientAsset(response: ServerResponse, filename: string): Promise<void> {
+    const clientDir = resolvePath(__dirname, "client");
+    const filePath = resolvePath(clientDir, filename);
+    if (!filePath.startsWith(clientDir)) {
+      this.sendJson(response, 403, { error: "접근이 거부되었습니다." });
+      return;
+    }
+
+    try {
+      const data = await readFile(filePath);
+      response.statusCode = 200;
+      let contentType = "application/octet-stream";
+      if (filename.endsWith(".js")) contentType = "application/javascript";
+      else if (filename.endsWith(".css")) contentType = "text/css";
+      response.setHeader("content-type", contentType);
+      response.setHeader("cache-control", "public, max-age=86400");
+      response.end(data);
+    } catch {
+      this.sendJson(response, 404, { error: "클라이언트 자산을 찾을 수 없습니다." });
+    }
   }
 
   private async handleExchange(request: IncomingMessage, response: ServerResponse, url: URL): Promise<void> {

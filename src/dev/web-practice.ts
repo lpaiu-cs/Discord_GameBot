@@ -12,7 +12,7 @@ import { createPracticeClient } from "./practice-client";
 import { DashboardAccessService } from "../web/access";
 import { JoinTicketService } from "../web/join-ticket";
 import { FixedBaseUrlProvider } from "../web/public-base-url";
-import { SessionStore } from "../web/session-store";
+import { SessionStore, InMemorySessionStore } from "../web/session-store";
 import { DashboardServer } from "../web/server";
 
 const DEFAULT_PORT = 3014;
@@ -51,7 +51,7 @@ async function main(): Promise<void> {
   }));
 
   const joinTicketService = new JoinTicketService(process.env.JOIN_TICKET_SECRET ?? "practice-join-ticket-secret");
-  const sessionStore = new SessionStore(process.env.WEB_SESSION_SECRET ?? "practice-web-session-secret");
+  const sessionStore = new InMemorySessionStore(process.env.WEB_SESSION_SECRET ?? "practice-web-session-secret");
   const dashboardAccess = new DashboardAccessService(
     new FixedBaseUrlProvider(practiceBaseUrl),
     joinTicketService,
