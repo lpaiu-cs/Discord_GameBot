@@ -298,10 +298,10 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
          if (phaseName === "night") icon = "/resource/images/moon_icon.svg";
          if (phaseName === "vote" || phaseName === "trial") icon = "/resource/images/gavel_icon.svg";
          
-         const html = \`<div class="phase-overlay" id="phaseOverlay">
-             <img src="\${icon}" />
-             <h2>\${escapeHtml(label)}</h2>
-         </div>\`;
+         const html = `<div class="phase-overlay" id="phaseOverlay">
+             <img src="${icon}" />
+             <h2>${escapeHtml(label)}</h2>
+         </div>`;
          const existing = document.getElementById("phaseOverlay");
          if (existing) existing.remove();
          document.body.insertAdjacentHTML('beforeend', html);
@@ -376,7 +376,7 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
           return "마감 없음";
         }
         const remaining = Math.max(0, timestamp - estimateServerNow());
-        return \`\${Math.ceil(remaining / 1000)}초 남음\`;
+        return `${Math.ceil(remaining / 1000)}초 남음`;
       }
 
       function estimateServerNow() {
@@ -620,24 +620,24 @@ const initialState = JSON.parse(document.getElementById("initial-state").textCon
         const occupiedSeats = state.room.seats.filter((seat) => !seat.empty);
         const seatIndex = occupiedSeats.findIndex((seat) => seat.userId === userId);
         if (seatIndex >= 0) {
-          return \`nick-color-\${(seatIndex % 8) + 1}\`;
+          return `nick-color-${(seatIndex % 8) + 1}`;
         }
 
         let hash = 0;
         for (const char of String(userId)) {
           hash = (hash * 31 + char.charCodeAt(0)) >>> 0;
         }
-        return \`nick-color-\${(hash % 8) + 1}\`;
+        return `nick-color-${(hash % 8) + 1}`;
       }
 
       function phaseDisplayText(state) {
         const phase = state.room.phase;
         const label = state.room.phaseLabel;
-        if (phase === "night") return \`\${state.room.nightNumber}일째 밤\`;
-        if (phase === "discussion") return \`\${state.room.dayNumber}일째 낮 토론\`;
-        if (phase === "vote") return \`\${state.room.dayNumber}일째 투표\`;
-        if (phase === "defense") return \`\${state.room.dayNumber}일째 최후의 반론\`;
-        if (phase === "trial") return \`\${state.room.dayNumber}일째 찬반 투표\`;
+        if (phase === "night") return `${state.room.nightNumber}일째 밤`;
+        if (phase === "discussion") return `${state.room.dayNumber}일째 낮 토론`;
+        if (phase === "vote") return `${state.room.dayNumber}일째 투표`;
+        if (phase === "defense") return `${state.room.dayNumber}일째 최후의 반론`;
+        if (phase === "trial") return `${state.room.dayNumber}일째 찬반 투표`;
         return label;
       }
 
@@ -693,19 +693,19 @@ function renderMobileDock(state) {
 
 function actionControl(control) {
   if (control.type === "info") {
-    return \`<div class="control"><strong>\${escapeHtml(control.title)}</strong><div class="muted">\${escapeHtml(control.description)}</div></div>\`;
+    return `<div class="control"><strong>${escapeHtml(control.title)}</strong><div class="muted">${escapeHtml(control.description)}</div></div>`;
         }
 
         if (control.type === "button") {
-          return \`
+          return `
             <div class="control">
-              <strong>\${escapeHtml(control.title)}</strong>
-              <div class="muted">\${escapeHtml(control.description)}</div>
+              <strong>${escapeHtml(control.title)}</strong>
+              <div class="muted">${escapeHtml(control.description)}</div>
               <div class="button-row">
-                <button type="button" data-action-type="\${escapeHtml(control.actionType)}">\${escapeHtml(control.title)}</button>
+                <button type="button" data-action-type="${escapeHtml(control.actionType)}">${escapeHtml(control.title)}</button>
               </div>
             </div>
-          \`;
+          `;
         }
 
         if (control.type === "buttons") {
@@ -714,19 +714,19 @@ function actionControl(control) {
             .map(
               (button) => {
                 const cls = isTrialVote ? (button.value === "yes" ? " vote-yes" : " vote-no") : "";
-                return \`<button type="button" class="\${cls}" data-action-type="\${escapeHtml(control.actionType)}" data-value="\${escapeHtml(button.value)}">\${escapeHtml(button.label)}</button>\`;
+                return `<button type="button" class="${cls}" data-action-type="${escapeHtml(control.actionType)}" data-value="${escapeHtml(button.value)}">${escapeHtml(button.label)}</button>`;
               },
             )
             .join("");
-          const current = control.currentLabel ? \`<div class="footer">현재 선택: \${escapeHtml(control.currentLabel)}</div>\` : "";
-          return \`
+          const current = control.currentLabel ? `<div class="footer">현재 선택: ${escapeHtml(control.currentLabel)}</div>` : "";
+          return `
             <div class="control">
-              <strong>\${escapeHtml(control.title)}</strong>
-              <div class="muted">\${escapeHtml(control.description)}</div>
-              <div class="button-row">\${buttons}</div>
-              \${current}
+              <strong>${escapeHtml(control.title)}</strong>
+              <div class="muted">${escapeHtml(control.description)}</div>
+              <div class="button-row">${buttons}</div>
+              ${current}
             </div>
-          \`;
+          `;
         }
 
         const selectableValues = new Set((control.options || []).map((o) => o.value));
@@ -739,27 +739,27 @@ function actionControl(control) {
           const label = seat.empty ? "빈 자리" : seat.displayName;
           const deadCls = (!seat.empty && !seat.alive) ? " is-dead-cell" : "";
 
-          const actionIconHtml = selected ? \`<img src="/resource/actions/\${currentState.viewer.role}_action.png" class="action-target-icon" />\` : "";
+          const actionIconHtml = selected ? `<img src="/resource/actions/${currentState.viewer.role}_action.png" class="action-target-icon" />` : "";
 
-          return \`<div class="action-grid-cell\${selected}\${disabledCls}\${deadCls}"\${isSelectable ? \` data-grid-value="\${escapeHtml(seat.userId)}" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}"\` : ""}>
-            <div class="action-grid-avatar \${nickClass}">\${seatNum}</div>
-            <div class="action-grid-name">\${escapeHtml(label)}</div>
-            \${actionIconHtml}
-          </div>\`;
+          return `<div class="action-grid-cell${selected}${disabledCls}${deadCls}"${isSelectable ? ` data-grid-value="${escapeHtml(seat.userId)}" data-action-type="${escapeHtml(control.actionType)}" data-action="${escapeHtml(control.action || "")}"` : ""}>
+            <div class="action-grid-avatar ${nickClass}">${seatNum}</div>
+            <div class="action-grid-name">${escapeHtml(label)}</div>
+            ${actionIconHtml}
+          </div>`;
         }).join("");
-        const current = control.currentLabel ? \`<div class="footer">현재 선택: \${escapeHtml(control.currentLabel)}</div>\` : "";
-        return \`
+        const current = control.currentLabel ? `<div class="footer">현재 선택: ${escapeHtml(control.currentLabel)}</div>` : "";
+        return `
           <div class="control">
-            <strong>\${escapeHtml(control.title)}</strong>
-            <div class="muted">\${escapeHtml(control.description)}</div>
-            <div class="action-grid" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}">\${gridCells}</div>
-            <form class="action-form" data-action-type="\${escapeHtml(control.actionType)}" data-action="\${escapeHtml(control.action || "")}" style="margin-top:8px">
-              <input type="hidden" name="targetId" value="\${escapeHtml(control.currentValue || "")}" />
-              <button type="submit"\${control.currentValue ? "" : " disabled"}>제출</button>
+            <strong>${escapeHtml(control.title)}</strong>
+            <div class="muted">${escapeHtml(control.description)}</div>
+            <div class="action-grid" data-action-type="${escapeHtml(control.actionType)}" data-action="${escapeHtml(control.action || "")}">${gridCells}</div>
+            <form class="action-form" data-action-type="${escapeHtml(control.actionType)}" data-action="${escapeHtml(control.action || "")}" style="margin-top:8px">
+              <input type="hidden" name="targetId" value="${escapeHtml(control.currentValue || "")}" />
+              <button type="submit"${control.currentValue ? "" : " disabled"}>제출</button>
             </form>
-            \${current}
+            ${current}
           </div>
-        \`;
+        `;
       }
 
       function displayAuthorName(viewerId, message) {
@@ -785,11 +785,11 @@ function actionControl(control) {
 
       function chatMessage(state, viewerId, message, previousMessage) {
         if (message.kind === "system") {
-          return \`
-            <div class="chat-row chat-row--system" data-message-id="\${escapeHtml(message.id)}">
-              <div class="chat-bubble chat-bubble--system">\${escapeHtml(message.content)}</div>
+          return `
+            <div class="chat-row chat-row--system" data-message-id="${escapeHtml(message.id)}">
+              <div class="chat-bubble chat-bubble--system">${escapeHtml(message.content)}</div>
             </div>
-          \`;
+          `;
         }
 
         const mine = message.authorId === viewerId;
@@ -804,25 +804,25 @@ function actionControl(control) {
           ? ""
           : continued
             ? '<div class="chat-avatar chat-avatar--ghost"></div>'
-            : \`<div class="chat-avatar \${nickClass}">\${escapeHtml(authorInitial(state, message.authorId))}</div>\`;
+            : `<div class="chat-avatar ${nickClass}">${escapeHtml(authorInitial(state, message.authorId))}</div>`;
         const head = continued
           ? ""
-          : \`
+          : `
               <div class="chat-head">
-                <div class="chat-author \${nickClass}">\${escapeHtml(displayAuthorName(viewerId, message))}</div>
-                <div class="chat-meta">\${formatClock(message.createdAt)}</div>
+                <div class="chat-author ${nickClass}">${escapeHtml(displayAuthorName(viewerId, message))}</div>
+                <div class="chat-meta">${formatClock(message.createdAt)}</div>
               </div>
-            \`;
+            `;
 
-        return \`
-          <div class="\${rowClass}" data-message-id="\${escapeHtml(message.id)}">
-            \${avatar}
-            <div class="\${stackClass}">
-              \${head}
-              <div class="\${bubbleClass}">\${escapeHtml(message.content)}</div>
+        return `
+          <div class="${rowClass}" data-message-id="${escapeHtml(message.id)}">
+            ${avatar}
+            <div class="${stackClass}">
+              ${head}
+              <div class="${bubbleClass}">${escapeHtml(message.content)}</div>
             </div>
           </div>
-        \`;
+        `;
       }
 
       function chatMessagesHtml(state, viewerId, chat) {
@@ -835,44 +835,44 @@ function actionControl(control) {
 
       function chatFooterHtml(chat) {
         return chat.canWrite
-          ? \`
-              <form class="chat-form" data-channel="\${escapeHtml(chat.channel)}">
-                <input name="content" maxlength="500" placeholder="\${escapeHtml(chat.title)} 메시지 입력" />
+          ? `
+              <form class="chat-form" data-channel="${escapeHtml(chat.channel)}">
+                <input name="content" maxlength="500" placeholder="${escapeHtml(chat.title)} 메시지 입력" />
                 <button type="submit">전송</button>
               </form>
-            \`
+            `
           : '<div class="notice" style="text-align: center; color: var(--muted); background: rgba(255,255,255,0.05); border-color: rgba(255,255,255,0.1);">🔒 현재 이 채널에 쓸 수 없습니다.</div>';
       }
 
       function chatSection(state, viewerId, chat, withHeading) {
         const heading = withHeading
-          ? \`
+          ? `
               <div class="panel-head">
                 <div>
-                  <h3>\${escapeHtml(chat.title)}</h3>
+                  <h3>${escapeHtml(chat.title)}</h3>
                 </div>
               </div>
-            \`
+            `
           : "";
 
-        const channelTheme = withHeading ? \` secret-chat--\${chat.channel}\` : "";
-        return \`
-          <div class="\${withHeading ? "secret-chat" : ""}\${channelTheme}">
-            \${heading}
+        const channelTheme = withHeading ? ` secret-chat--${chat.channel}` : "";
+        return `
+          <div class="${withHeading ? "secret-chat" : ""}${channelTheme}">
+            ${heading}
             <div class="chat-shell">
-              <div class="chat-list" data-channel="\${escapeHtml(chat.channel)}">\${chatMessagesHtml(state, viewerId, chat)}</div>
-              <div class="footer">\${chatFooterHtml(chat)}</div>
+              <div class="chat-list" data-channel="${escapeHtml(chat.channel)}">${chatMessagesHtml(state, viewerId, chat)}</div>
+              <div class="footer">${chatFooterHtml(chat)}</div>
             </div>
           </div>
-        \`;
+        `;
       }
 
       function sectionClass(sectionId) {
-        return \`panel section-panel \${sectionId === activeSection ? "is-active" : ""}\`;
+        return `panel section-panel ${sectionId === activeSection ? "is-active" : ""}`;
       }
 
       function dashboardScaffoldHtml() {
-        return \`
+        return `
           <div class="dashboard-grid" data-dashboard-grid>
             <section class="panel section-panel span-4" data-section="state">
               <div class="panel-head">
@@ -919,7 +919,7 @@ function actionControl(control) {
               <div class="panel-body" data-section-body="logs"></div>
             </section>
           </div>
-        \`;
+        `;
       }
 
       function ensureDashboardScaffold() {
@@ -962,15 +962,15 @@ function actionControl(control) {
         if (!state.endedSummary) {
           return "";
         }
-        return \`
-          <div class="viewer-card endgame-card\${state.endedSummary.viewerResultLabel === "승리" ? " endgame-card--win" : state.endedSummary.viewerResultLabel === "패배" ? " endgame-card--lose" : ""}">
+        return `
+          <div class="viewer-card endgame-card${state.endedSummary.viewerResultLabel === "승리" ? " endgame-card--win" : state.endedSummary.viewerResultLabel === "패배" ? " endgame-card--lose" : ""}">
             <strong>최종 결과</strong>
-            <div>\${escapeHtml(state.endedSummary.winnerLabel ?? state.endedSummary.reason ?? "게임 종료")}</div>
-            \${state.endedSummary.reason && state.endedSummary.reason !== state.endedSummary.winnerLabel ? \`<div class="footer">\${escapeHtml(state.endedSummary.reason)}</div>\` : ""}
-            \${state.endedSummary.viewerResultLabel ? \`<div class="footer">내 결과: \${escapeHtml(state.endedSummary.viewerResultLabel)}</div>\` : ""}
+            <div>${escapeHtml(state.endedSummary.winnerLabel ?? state.endedSummary.reason ?? "게임 종료")}</div>
+            ${state.endedSummary.reason && state.endedSummary.reason !== state.endedSummary.winnerLabel ? `<div class="footer">${escapeHtml(state.endedSummary.reason)}</div>` : ""}
+            ${state.endedSummary.viewerResultLabel ? `<div class="footer">내 결과: ${escapeHtml(state.endedSummary.viewerResultLabel)}</div>` : ""}
           </div>
-          <div class="reveal-grid">\${state.endedSummary.revealedPlayers.map((revealed) => revealCard(state, revealed)).join("")}</div>
-        \`;
+          <div class="reveal-grid">${state.endedSummary.revealedPlayers.map((revealed) => revealCard(state, revealed)).join("")}</div>
+        `;
       }
 
       function renderStateSection(state) {
@@ -980,20 +980,20 @@ function actionControl(control) {
         }
         const team = teamClass(state);
         const roleIcon = ROLE_ICONS.find((role) => role.label === state.viewer.roleLabel);
-        updateHtml(body, \`
-          \${!state.viewer.alive ? '<div class="spectator-banner">관전 중입니다</div>' : ""}
-          <div class="viewer-card viewer-card--\${team}\${!state.viewer.alive ? " viewer-card--dead" : ""}">
+        updateHtml(body, `
+          ${!state.viewer.alive ? '<div class="spectator-banner">관전 중입니다</div>' : ""}
+          <div class="viewer-card viewer-card--${team}${!state.viewer.alive ? " viewer-card--dead" : ""}">
             <div style="display:flex;gap:12px;align-items:flex-start;">
-              \${roleIcon ? \`<img src="\${roleIconUrl(roleIcon.key)}" alt="" style="width:42px;height:42px;border-radius:10px;object-fit:contain;flex-shrink:0;opacity:0.92;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));" />\` : ""}
+              ${roleIcon ? `<img src="${roleIconUrl(roleIcon.key)}" alt="" style="width:42px;height:42px;border-radius:10px;object-fit:contain;flex-shrink:0;opacity:0.92;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.4));" />` : ""}
               <div>
                 <strong>내 정보</strong>
-                <div>직업: \${escapeHtml(state.viewer.roleLabel)}</div>
+                <div>직업: ${escapeHtml(state.viewer.roleLabel)}</div>
               </div>
             </div>
-            <div class="muted" style="margin-top: 8px;">\${escapeHtml(state.viewer.roleSummary)}</div>
-            \${state.viewer.loverName ? \`<div class="footer">연인: \${escapeHtml(state.viewer.loverName)}</div>\` : ""}
-            \${state.viewer.deadReason ? \`<div class="footer">사망 사유: \${escapeHtml(state.viewer.deadReason)}</div>\` : ""}
-            \${state.viewer.ascended ? '<div class="footer">성불 상태</div>' : ""}
+            <div class="muted" style="margin-top: 8px;">${escapeHtml(state.viewer.roleSummary)}</div>
+            ${state.viewer.loverName ? `<div class="footer">연인: ${escapeHtml(state.viewer.loverName)}</div>` : ""}
+            ${state.viewer.deadReason ? `<div class="footer">사망 사유: ${escapeHtml(state.viewer.deadReason)}</div>` : ""}
+            ${state.viewer.ascended ? '<div class="footer">성불 상태</div>' : ""}
           </div>
           <div class="mini-grid">
             <div class="mini-card">
@@ -1002,13 +1002,13 @@ function actionControl(control) {
             </div>
             <div class="mini-card">
               <strong>행동</strong>
-              <div>\${actionableControlCount(state)}개 가능</div>
+              <div>${actionableControlCount(state)}개 가능</div>
             </div>
           </div>
-          <div class="seat-grid">\${state.room.seats.map((seat) => seatCard(state, seat)).join("")}</div>
-          \${state.room.currentTrialTargetName ? \`<div class="line-item"><strong>현재 대상</strong><div>\${escapeHtml(state.room.currentTrialTargetName)}</div></div>\` : ""}
-          \${buildEndedSummaryHtml(state)}
-        \`);
+          <div class="seat-grid">${state.room.seats.map((seat) => seatCard(state, seat)).join("")}</div>
+          ${state.room.currentTrialTargetName ? `<div class="line-item"><strong>현재 대상</strong><div>${escapeHtml(state.room.currentTrialTargetName)}</div></div>` : ""}
+          ${buildEndedSummaryHtml(state)}
+        `);
       }
 
       function renderActionsSection(state) {
@@ -1016,9 +1016,9 @@ function actionControl(control) {
         if (!(body instanceof HTMLElement)) {
           return;
         }
-        const notices = state.actions.notices.map((notice) => \`<div class="notice">\${escapeHtml(notice)}</div>\`).join("");
+        const notices = state.actions.notices.map((notice) => `<div class="notice">${escapeHtml(notice)}</div>`).join("");
         const controls = state.actions.controls.map(actionControl).join("");
-        updateHtml(body, \`<div class="control-list">\${notices}\${controls}</div>\`);
+        updateHtml(body, `<div class="control-list">${notices}${controls}</div>`);
       }
 
       function ensureChatRoot(root, chat, withHeading) {
@@ -1116,7 +1116,7 @@ function actionControl(control) {
             ? state.systemLog.privateLines
                 .map(
                   (line) =>
-                    \`<div class="line-item success"><strong>\${formatClock(line.createdAt)}</strong><div>\${escapeHtml(line.line)}</div></div>\`,
+                    `<div class="line-item success"><strong>${formatClock(line.createdAt)}</strong><div>${escapeHtml(line.line)}</div></div>`,
                 )
                 .join("")
             : '<div class="line-item muted">개인 결과가 아직 없습니다.</div>';
@@ -1131,34 +1131,34 @@ function actionControl(control) {
           revealed.teamLabel,
           status,
           revealed.ascended ? "성불" : "",
-          revealed.deadReason ? \`사유: \${revealed.deadReason}\` : "",
+          revealed.deadReason ? `사유: ${revealed.deadReason}` : "",
         ].filter(Boolean).join(" · ");
 
-        return \`
-          <div class="reveal-card reveal-card--\${teamClass}">
-            <div class="reveal-name \${nickClass}">\${escapeHtml(revealed.displayName)}\${revealed.isViewer ? " (나)" : ""}</div>
-            <div class="reveal-role">\${escapeHtml(revealed.roleLabel)}</div>
-            <div class="reveal-meta">\${escapeHtml(extras)}</div>
+        return `
+          <div class="reveal-card reveal-card--${teamClass}">
+            <div class="reveal-name ${nickClass}">${escapeHtml(revealed.displayName)}${revealed.isViewer ? " (나)" : ""}</div>
+            <div class="reveal-role">${escapeHtml(revealed.roleLabel)}</div>
+            <div class="reveal-meta">${escapeHtml(extras)}</div>
           </div>
-        \`;
+        `;
       }
 
       function seatMemoHtml(seatNum) {
         const memoKey = seatMemos[seatNum];
         if (memoKey) {
-          return \`<div class="seat-memo"><img src="\${roleIconUrl(memoKey)}" alt="memo" /></div>\`;
+          return `<div class="seat-memo"><img src="${roleIconUrl(memoKey)}" alt="memo" /></div>`;
         }
         return '<div class="seat-memo seat-memo--empty">?</div>';
       }
 
       function seatCard(state, seat) {
         if (seat.empty) {
-          return \`
+          return `
             <div class="seat-card is-empty">
-              <div class="seat-avatar" style="background: rgba(255,255,255,0.06); color: var(--muted);">\${seat.seat}</div>
+              <div class="seat-avatar" style="background: rgba(255,255,255,0.06); color: var(--muted);">${seat.seat}</div>
               <div class="seat-name muted">빈 자리</div>
             </div>
-          \`;
+          `;
         }
 
         const flags = [];
@@ -1178,14 +1178,14 @@ function actionControl(control) {
         }
         const nickClass = nicknameClassForUser(state, seat.userId);
 
-        return \`
-          <div class="\${classes.join(" ")}" data-memo-seat="\${seat.seat}">
-            <div class="seat-avatar \${nickClass}">\${seat.seat}</div>
-            <div class="seat-flags" style="position:absolute;top:26px;left:4px;z-index:4;flex-direction:column;">\${flags.join("")}</div>
-            \${seatMemoHtml(seat.seat)}
-            <div class="seat-name \${nickClass}">\${escapeHtml(seat.displayName)}</div>
+        return `
+          <div class="${classes.join(" ")}" data-memo-seat="${seat.seat}">
+            <div class="seat-avatar ${nickClass}">${seat.seat}</div>
+            <div class="seat-flags" style="position:absolute;top:26px;left:4px;z-index:4;flex-direction:column;">${flags.join("")}</div>
+            ${seatMemoHtml(seat.seat)}
+            <div class="seat-name ${nickClass}">${escapeHtml(seat.displayName)}</div>
           </div>
-        \`;
+        `;
       }
 
       function renderMemoOverlay(seatNum) {
@@ -1195,24 +1195,24 @@ function actionControl(control) {
         const cells = ROLE_ICONS.map((role) => {
           const selected = currentMemo === role.key ? " is-selected" : "";
           const teamCls = role.team === "mafia" ? " is-mafia-role" : "";
-          return \`<div class="memo-role-cell\${selected}\${teamCls}" data-memo-role="\${role.key}">
-            <img class="memo-role-icon" src="\${roleIconUrl(role.key)}" alt="\${escapeHtml(role.label)}" />
-            <div class="memo-role-name">\${escapeHtml(role.label)}</div>
-          </div>\`;
+          return `<div class="memo-role-cell${selected}${teamCls}" data-memo-role="${role.key}">
+            <img class="memo-role-icon" src="${roleIconUrl(role.key)}" alt="${escapeHtml(role.label)}" />
+            <div class="memo-role-name">${escapeHtml(role.label)}</div>
+          </div>`;
         }).join("");
 
-        return \`<div class="memo-overlay" data-memo-overlay>
+        return `<div class="memo-overlay" data-memo-overlay>
           <div class="memo-sheet">
             <div class="memo-sheet-head">
-              <h3>\${escapeHtml(displayName)} 추리 메모</h3>
+              <h3>${escapeHtml(displayName)} 추리 메모</h3>
               <button type="button" class="memo-close-btn" data-memo-close>✕</button>
             </div>
-            <div class="memo-grid">\${cells}</div>
+            <div class="memo-grid">${cells}</div>
             <div class="memo-clear-row">
               <button type="button" data-memo-clear>메모 지우기</button>
             </div>
           </div>
-        </div>\`;
+        </div>`;
       }
 
       function openMemoOverlay(seatNum) {
@@ -1272,7 +1272,7 @@ function actionControl(control) {
 
       async function refreshState() {
         try {
-          const response = await fetch(\`/api/game/\${encodeURIComponent(currentState.room.gameId)}/state?sinceVersion=\${encodeURIComponent(String(sinceVersion))}\`, {
+          const response = await fetch(`/api/game/${encodeURIComponent(currentState.room.gameId)}/state?sinceVersion=${encodeURIComponent(String(sinceVersion))}`, {
             credentials: "same-origin",
             cache: "no-store",
           });
@@ -1328,7 +1328,7 @@ function actionControl(control) {
         try {
           if (form.classList.contains("action-form")) {
             const data = new FormData(form);
-            await postJson(\`/api/game/\${encodeURIComponent(currentState.room.gameId)}/actions\`, {
+            await postJson(`/api/game/${encodeURIComponent(currentState.room.gameId)}/actions`, {
               actionType: form.dataset.actionType,
               action: form.dataset.action || undefined,
               targetId: data.get("targetId"),
@@ -1347,7 +1347,7 @@ function actionControl(control) {
               delete chatDrafts[channel];
               pendingAutoscrollChannels.add(channel);
             }
-            await postJson(\`/api/game/\${encodeURIComponent(currentState.room.gameId)}/chats/\${encodeURIComponent(form.dataset.channel)}\`, {
+            await postJson(`/api/game/${encodeURIComponent(currentState.room.gameId)}/chats/${encodeURIComponent(form.dataset.channel)}`, {
               content,
             });
           }
@@ -1471,7 +1471,7 @@ function actionControl(control) {
         }
 
         try {
-          await postJson(\`/api/game/\${encodeURIComponent(currentState.room.gameId)}/actions\`, {
+          await postJson(`/api/game/${encodeURIComponent(currentState.room.gameId)}/actions`, {
             actionType,
             value: button.dataset.value || undefined,
           });

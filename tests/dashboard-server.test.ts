@@ -285,3 +285,29 @@ test("리소스 서버는 mp3 와 URL 인코딩된 오디오 파일명을 그대
   assert.equal(doctorSave.status, 200);
   assert.equal(doctorSave.headers.get("content-type"), "audio/mpeg");
 });
+
+test("클라이언트 자산 서버는 CSS 와 JS 번들을 그대로 제공한다", async (t) => {
+  const manager = new GameManager();
+  const joinTicketService = new JoinTicketService("join-secret");
+  const sessionStore = new SessionStore("session-secret");
+  const server = new DashboardServer({
+    client: {} as Client,
+    gameManager: manager,
+    joinTicketService,
+    sessionStore,
+    port: 0,
+    secureCookies: false,
+  });
+  const port = await server.listen();
+  t.after(async () => {
+    await server.close();
+  });
+
+  const css = await fetch(`http://127.0.0.1:${port}/client/app.css`);
+  const js = await fetch(`http://127.0.0.1:${port}/client/app.js`);
+
+  assert.equal(css.status, 200);
+  assert.equal(css.headers.get("content-type"), "text/css");
+  assert.equal(js.status, 200);
+  assert.equal(js.headers.get("content-type"), "application/javascript");
+});
