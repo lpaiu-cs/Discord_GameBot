@@ -5,29 +5,37 @@ import { sendJson } from "./utils";
 
 const transpiledClientModuleCache = new Map<string, { mtimeMs: number; outputText: string }>();
 let typeScriptCompilerPromise: Promise<any | null> | null = null;
-const moduleRoot = resolvePath(__dirname, "../../../");
+const moduleRootCandidates = [
+  resolvePath(__dirname, "../../../"),
+  resolvePath(process.cwd(), "mafia"),
+];
 
 export async function handleResource(ctx: RouteContext, filename: string): Promise<void> {
-  const resourceDir = resolvePath(moduleRoot, "resource");
-  const filePath = resolvePath(resourceDir, filename);
-  if (!filePath.startsWith(resourceDir)) {
-    sendJson(ctx.response, 403, { error: "접근이 거부되었습니다." });
-    return;
+  for (const moduleRoot of moduleRootCandidates) {
+    const resourceDir = resolvePath(moduleRoot, "resource");
+    const filePath = resolvePath(resourceDir, filename);
+    if (!filePath.startsWith(resourceDir)) {
+      sendJson(ctx.response, 403, { error: "접근이 거부되었습니다." });
+      return;
+    }
+
+    try {
+      const data = await readFile(filePath);
+      ctx.response.statusCode = 200;
+      let contentType = "application/octet-stream";
+      if (filename.endsWith(".svg")) contentType = "image/svg+xml";
+      else if (filename.endsWith(".png")) contentType = "image/png";
+      else if (filename.endsWith(".mp3")) contentType = "audio/mpeg";
+      ctx.response.setHeader("content-type", contentType);
+      ctx.response.setHeader("cache-control", "public, max-age=86400, immutable");
+      ctx.response.end(data);
+      return;
+    } catch {
+      // 다음 후보 루트를 확인한다.
+    }
   }
 
-  try {
-    const data = await readFile(filePath);
-    ctx.response.statusCode = 200;
-    let contentType = "application/octet-stream";
-    if (filename.endsWith(".svg")) contentType = "image/svg+xml";
-    else if (filename.endsWith(".png")) contentType = "image/png";
-    else if (filename.endsWith(".mp3")) contentType = "audio/mpeg";
-    ctx.response.setHeader("content-type", contentType);
-    ctx.response.setHeader("cache-control", "public, max-age=86400, immutable");
-    ctx.response.end(data);
-  } catch {
-    sendJson(ctx.response, 404, { error: "리소스를 찾을 수 없습니다." });
-  }
+  sendJson(ctx.response, 404, { error: "리소스를 찾을 수 없습니다." });
 }
 
 export async function handleClientAsset(ctx: RouteContext, filename: string): Promise<void> {
@@ -45,8 +53,10 @@ export async function handleClientAsset(ctx: RouteContext, filename: string): Pr
   // __dirname 은 mafia/src/web/routes/ 또는 mafia/dist/web/routes/
   const candidateDirs = [
     resolvePath(__dirname, "../client"),
-    resolvePath(moduleRoot, "src/web/client"),
-    resolvePath(moduleRoot, "dist/web/client"),
+    ...moduleRootCandidates.flatMap((moduleRoot) => [
+      resolvePath(moduleRoot, "src/web/client"),
+      resolvePath(moduleRoot, "dist/web/client"),
+    ]),
   ];
 
   for (const clientDir of candidateDirs) {
@@ -75,39 +85,43 @@ export async function handleClientAsset(ctx: RouteContext, filename: string): Pr
 }
 
 async function transpileClientModule(filename: string): Promise<string | null> {
-  const sourcePath = resolvePath(moduleRoot, "src/web/client", filename.replace(/\.js$/u, ".ts"));
+  for (const moduleRoot of moduleRootCandidates) {
+    const sourcePath = resolvePath(moduleRoot, "src/web/client", filename.replace(/\.js$/u, ".ts"));
 
-  try {
-    const sourceStat = await stat(sourcePath);
-    const cached = transpiledClientModuleCache.get(sourcePath);
-    if (cached && cached.mtimeMs === sourceStat.mtimeMs) {
-      return cached.outputText;
+    try {
+      const sourceStat = await stat(sourcePath);
+      const cached = transpiledClientModuleCache.get(sourcePath);
+      if (cached && cached.mtimeMs === sourceStat.mtimeMs) {
+        return cached.outputText;
+      }
+
+      const typeScript = await loadTypeScriptCompiler();
+      if (!typeScript) {
+        return null;
+      }
+
+      const sourceText = await readFile(sourcePath, "utf8");
+      const transpiled = typeScript.transpileModule(sourceText, {
+        compilerOptions: {
+          target: typeScript.ScriptTarget.ES2022,
+          module: typeScript.ModuleKind.ES2022,
+          moduleResolution: typeScript.ModuleResolutionKind.Bundler,
+        },
+        fileName: sourcePath,
+      }).outputText;
+
+      transpiledClientModuleCache.set(sourcePath, {
+        mtimeMs: sourceStat.mtimeMs,
+        outputText: transpiled,
+      });
+
+      return transpiled;
+    } catch {
+      // 다음 후보 루트를 확인한다.
     }
-
-    const typeScript = await loadTypeScriptCompiler();
-    if (!typeScript) {
-      return null;
-    }
-
-    const sourceText = await readFile(sourcePath, "utf8");
-    const transpiled = typeScript.transpileModule(sourceText, {
-      compilerOptions: {
-        target: typeScript.ScriptTarget.ES2022,
-        module: typeScript.ModuleKind.ES2022,
-        moduleResolution: typeScript.ModuleResolutionKind.Bundler,
-      },
-      fileName: sourcePath,
-    }).outputText;
-
-    transpiledClientModuleCache.set(sourcePath, {
-      mtimeMs: sourceStat.mtimeMs,
-      outputText: transpiled,
-    });
-
-    return transpiled;
-  } catch {
-    return null;
   }
+
+  return null;
 }
 
 async function loadTypeScriptCompiler(): Promise<any | null> {

@@ -1,4 +1,4 @@
-import { REST, Routes, SlashCommandBuilder } from "discord.js";
+import { REST, Routes, SlashCommandBuilder, RESTPostAPIChatInputApplicationCommandsJSONBody } from "discord.js";
 import { config } from "../config";
 
 export const mafiaCommand = new SlashCommandBuilder()
@@ -28,9 +28,9 @@ export const mafiaCommand = new SlashCommandBuilder()
   .addSubcommand((subcommand) => subcommand.setName("advance").setDescription("현재 단계를 강제로 넘깁니다."))
   .addSubcommand((subcommand) => subcommand.setName("end").setDescription("현재 게임을 종료합니다."));
 
-export async function registerCommands(): Promise<void> {
+export async function registerCommands(commands: RESTPostAPIChatInputApplicationCommandsJSONBody[] = [mafiaCommand.toJSON()]): Promise<void> {
   const rest = new REST({ version: "10" }).setToken(config.token);
-  const body = [mafiaCommand.toJSON()];
+  const body = commands;
 
   if (config.guildId) {
     await rest.put(Routes.applicationGuildCommands(config.applicationId, config.guildId), { body });

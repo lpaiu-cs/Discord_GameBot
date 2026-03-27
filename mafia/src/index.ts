@@ -11,6 +11,7 @@ import {
   Partials,
   StringSelectMenuInteraction,
 } from "discord.js";
+import { LiarDiscordService } from "../../liar/src";
 import { config } from "./config";
 import { ensureUserProfile as syncUserProfile } from "./db/ensure-user-profile";
 import { createGameStatsStore } from "./db/create-game-stats-store";
@@ -48,6 +49,7 @@ const dashboardAccess = new DashboardAccessService(
   joinTicketService,
   config.joinTicketTtlSeconds * 1_000,
 );
+const liarService = new LiarDiscordService();
 const dashboardServer = new DashboardServer({
   client,
   gameManager: manager,
@@ -79,7 +81,7 @@ void main().catch((error) => {
 });
 
 client.once(Events.ClientReady, async (readyClient) => {
-  await registerCommands();
+  await registerCommands([mafiaCommand.toJSON(), ...liarService.commandDefinitions]);
   console.log(`logged in as ${readyClient.user.tag}`);
 });
 
@@ -106,6 +108,10 @@ client.on(Events.InteractionCreate, async (interaction) => {
 });
 
 async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+  if (await liarService.handleCommand(client, interaction)) {
+    return;
+  }
+
   if (interaction.commandName !== mafiaCommand.name) {
     return;
   }
