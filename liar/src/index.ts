@@ -1,5 +1,5 @@
 export { liarCategories, getLiarCategory } from "./content/categories";
-export { liarCommand, liarKeywordCommand } from "./discord/commands";
+export { liarCreateCommand, liarKeywordCommand } from "./discord/commands";
 export { LiarDiscordService } from "./discord/service";
 export { LiarGame, phaseLabel } from "./engine/game";
 export { InMemoryLiarGameRegistry } from "./engine/registry";

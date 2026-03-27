@@ -115,3 +115,62 @@ test("최다 득표 동률이면 라이어가 바로 승리한다", () => {
   assert.equal(game.result?.winner, "liar");
   assert.match(game.result?.reason ?? "", /동률/);
 });
+
+test("설명 시간 초과로 현재 차례를 넘길 수 있다", () => {
+  const game = createGame();
+  seedPlayers(game);
+
+  const rolls = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  game.start(() => rolls.shift() ?? 0);
+  const skippedSpeakerId = game.getCurrentSpeaker()!.userId;
+
+  const skipped = game.skipCurrentSpeaker();
+
+  assert.equal(skipped.skippedSpeakerId, skippedSpeakerId);
+  assert.equal(skipped.phaseChanged, false);
+  assert.notEqual(game.getCurrentSpeaker()?.userId, skippedSpeakerId);
+  assert.equal(game.getCompletedClueTurns(), 1);
+});
+
+test("무투표 시간 초과면 라이어 승리로 끝난다", () => {
+  const game = createGame();
+  seedPlayers(game);
+
+  const rolls = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  game.start(() => rolls.shift() ?? 0);
+  while (game.phase === "clue") {
+    const speaker = game.getCurrentSpeaker()!;
+    game.submitClue(speaker.userId, `${speaker.displayName} 설명`);
+  }
+
+  game.beginVote();
+  const resolution = game.resolveVotingTimeout();
+
+  assert.equal(game.phase, "ended");
+  assert.equal(resolution.result?.winner, "liar");
+  assert.match(resolution.result?.reason ?? "", /제출된 표가 없어/);
+});
+
+test("라이어가 시간 안에 정답을 못 내면 시민이 승리한다", () => {
+  const game = createGame();
+  seedPlayers(game);
+
+  const rolls = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0];
+  game.start(() => rolls.shift() ?? 0);
+  while (game.phase === "clue") {
+    const speaker = game.getCurrentSpeaker()!;
+    game.submitClue(speaker.userId, `${speaker.displayName} 설명`);
+  }
+
+  game.beginVote();
+  game.submitVote("host", "host");
+  game.submitVote("p1", "host");
+  game.submitVote("p2", "host");
+  game.submitVote("p3", "p1");
+
+  const result = game.resolveGuessTimeout();
+
+  assert.equal(game.phase, "ended");
+  assert.equal(result.winner, "citizens");
+  assert.match(result.reason, /제한 시간 안에 정답을 제출하지 못해/);
+});

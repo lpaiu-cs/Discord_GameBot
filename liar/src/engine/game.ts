@@ -64,6 +64,7 @@ export class LiarGame {
   accusedUserId: string | null = null;
   result: LiarResult | null = null;
   startedAt: number | null = null;
+  phaseDeadlineAt: number | null = null;
 
   constructor(params: {
     guildId: string;
@@ -91,6 +92,22 @@ export class LiarGame {
 
   get category(): LiarCategory {
     return getLiarCategory(this.categoryId) ?? getDefaultLiarCategory();
+  }
+
+  getCompletedClueTurns(): number {
+    return Math.min(this.currentTurnIndex, this.turnOrder.length);
+  }
+
+  getRemainingPhaseSeconds(now = Date.now()): number | null {
+    if (!this.phaseDeadlineAt) {
+      return null;
+    }
+
+    return Math.max(0, Math.ceil((this.phaseDeadlineAt - now) / 1_000));
+  }
+
+  setPhaseDeadline(deadlineAt: number | null): void {
+    this.phaseDeadlineAt = deadlineAt;
   }
 
   isParticipant(userId: string): boolean {
@@ -175,6 +192,7 @@ export class LiarGame {
     this.votes.clear();
     this.accusedUserId = null;
     this.result = null;
+    this.phaseDeadlineAt = null;
   }
 
   getKeywordView(userId: string): LiarKeywordView {
@@ -229,6 +247,30 @@ export class LiarGame {
     }
 
     return {
+      phaseChanged: false,
+      nextSpeakerId: this.turnOrder[this.currentTurnIndex] ?? null,
+    };
+  }
+
+  skipCurrentSpeaker(): { skippedSpeakerId: string | null; phaseChanged: boolean; nextSpeakerId: string | null } {
+    if (this.phase !== "clue") {
+      throw new Error("지금은 설명 차례를 넘길 수 없습니다.");
+    }
+
+    const skippedSpeakerId = this.turnOrder[this.currentTurnIndex] ?? null;
+    this.currentTurnIndex += 1;
+
+    if (this.currentTurnIndex >= this.turnOrder.length) {
+      this.phase = "discussion";
+      return {
+        skippedSpeakerId,
+        phaseChanged: true,
+        nextSpeakerId: null,
+      };
+    }
+
+    return {
+      skippedSpeakerId,
       phaseChanged: false,
       nextSpeakerId: this.turnOrder[this.currentTurnIndex] ?? null,
     };
@@ -293,6 +335,32 @@ export class LiarGame {
     return this.resolveVotes();
   }
 
+  resolveVotingTimeout(): LiarVoteResolution {
+    if (this.phase !== "voting") {
+      throw new Error("지금은 투표 시간초과 처리를 할 수 없습니다.");
+    }
+
+    if (this.votes.size === 0) {
+      const result: LiarResult = {
+        winner: "liar",
+        reason: "투표 시간이 끝날 때까지 제출된 표가 없어 라이어를 특정하지 못했습니다.",
+        accusedUserId: null,
+        guessedWord: null,
+      };
+      this.phase = "ended";
+      this.result = result;
+      this.phaseDeadlineAt = null;
+      return {
+        accusedUserId: null,
+        tiedUserIds: [],
+        phase: this.phase,
+        result,
+      };
+    }
+
+    return this.resolveVotes();
+  }
+
   guessWord(userId: string, guess: string): LiarResult {
     if (this.phase !== "guess") {
       throw new Error("지금은 라이어 추리 단계가 아닙니다.");
@@ -319,18 +387,38 @@ export class LiarGame {
         };
     this.phase = "ended";
     this.result = result;
+    this.phaseDeadlineAt = null;
+    return result;
+  }
+
+  resolveGuessTimeout(): LiarResult {
+    if (this.phase !== "guess") {
+      throw new Error("지금은 추리 시간초과 처리를 할 수 없습니다.");
+    }
+
+    const liar = this.liarId ? this.getPlayer(this.liarId) : null;
+    const result: LiarResult = {
+      winner: "citizens",
+      reason: `${liar?.displayName ?? "라이어"} 님이 제한 시간 안에 정답을 제출하지 못해 시민팀이 승리했습니다.`,
+      accusedUserId: this.accusedUserId,
+      guessedWord: null,
+    };
+    this.phase = "ended";
+    this.result = result;
+    this.phaseDeadlineAt = null;
     return result;
   }
 
   forceEnd(reason: string): LiarResult {
     const result: LiarResult = {
-      winner: "liar",
+      winner: "cancelled",
       reason,
       accusedUserId: this.accusedUserId,
       guessedWord: null,
     };
     this.phase = "ended";
     this.result = result;
+    this.phaseDeadlineAt = null;
     return result;
   }
 
@@ -364,11 +452,11 @@ export class LiarGame {
     if (this.phase === "clue") {
       const speaker = this.getCurrentSpeaker();
       header.push(`현재 차례: ${speaker?.displayName ?? "없음"}`);
-      header.push(`설명 진행: ${this.clues.length}/${this.turnOrder.length}`);
+      header.push(`설명 진행: ${this.getCompletedClueTurns()}/${this.turnOrder.length} (제출 ${this.clues.length})`);
     }
 
     if (this.phase === "discussion") {
-      header.push("토론 중입니다. 방장이 `/liar begin-vote` 로 투표를 시작하세요.");
+      header.push("토론 중입니다. 방장이 상태 메시지의 `투표 시작` 버튼으로 투표를 여세요.");
     }
 
     if (this.phase === "voting") {
@@ -382,6 +470,11 @@ export class LiarGame {
 
     if (this.phase === "ended" && this.result) {
       header.push(`결과: ${this.result.reason}`);
+    }
+
+    const remainingSeconds = this.getRemainingPhaseSeconds();
+    if (remainingSeconds !== null && this.phase !== "ended") {
+      header.push(`남은 시간: 약 ${remainingSeconds}초`);
     }
 
     return header.join("\n");
@@ -407,6 +500,7 @@ export class LiarGame {
       this.phase = "ended";
       this.accusedUserId = null;
       this.result = result;
+      this.phaseDeadlineAt = null;
       return {
         accusedUserId: null,
         tiedUserIds,
@@ -437,6 +531,7 @@ export class LiarGame {
     };
     this.phase = "ended";
     this.result = result;
+    this.phaseDeadlineAt = null;
     return {
       accusedUserId,
       tiedUserIds,

@@ -7,6 +7,7 @@ import {
   Interaction,
   InteractionEditReplyOptions,
   InteractionReplyOptions,
+  Message,
   MessageFlags,
   Partials,
   StringSelectMenuInteraction,
@@ -26,7 +27,7 @@ import { SessionStore, InMemorySessionStore } from "./web/session-store";
 import { DashboardServer } from "./web/server";
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
   partials: [Partials.Channel],
 });
 
@@ -104,6 +105,15 @@ client.on(Events.InteractionCreate, async (interaction) => {
   } catch (error) {
     console.error(error);
     await replyError(interaction, error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.");
+  }
+});
+
+client.on(Events.MessageCreate, async (message) => {
+  try {
+    await handleMessage(message);
+  } catch (error) {
+    console.error(error);
+    await replyMessageError(message, error instanceof Error ? error.message : "알 수 없는 오류가 발생했습니다.");
   }
 });
 
@@ -262,6 +272,10 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
 }
 
 async function handleButton(interaction: ButtonInteraction): Promise<void> {
+  if (await liarService.handleButton(client, interaction)) {
+    return;
+  }
+
   const [kind, gameId, tokenOrAction, value] = interaction.customId.split(":");
   const game = manager.findByGameId(gameId);
   if (!game) {
@@ -305,6 +319,10 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
 }
 
 async function handleSelect(interaction: StringSelectMenuInteraction): Promise<void> {
+  if (await liarService.handleSelect(client, interaction)) {
+    return;
+  }
+
   const [kind, gameId] = interaction.customId.split(":");
   const game = manager.findByGameId(gameId);
   if (!game) {
@@ -326,6 +344,10 @@ async function handleSelect(interaction: StringSelectMenuInteraction): Promise<v
   throw new Error("지원하지 않는 선택 메뉴입니다.");
 }
 
+async function handleMessage(message: Message): Promise<void> {
+  await liarService.handleMessage(client, message);
+}
+
 async function replyError(interaction: Interaction, message: string): Promise<void> {
   if (!interaction.isRepliable()) {
     return;
@@ -345,6 +367,18 @@ async function replyError(interaction: Interaction, message: string): Promise<vo
     await interaction.reply({ content: `오류: ${message}` });
   } catch (replyError) {
     console.error("failed to send interaction error reply", replyError);
+  }
+}
+
+async function replyMessageError(message: Message, content: string): Promise<void> {
+  if (message.author.bot) {
+    return;
+  }
+
+  try {
+    await message.reply(`오류: ${content}`);
+  } catch (replyError) {
+    console.error("failed to send message error reply", replyError);
   }
 }
 

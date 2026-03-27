@@ -1,6 +1,6 @@
 export type LiarPhase = "lobby" | "clue" | "discussion" | "voting" | "guess" | "ended";
 
-export type LiarWinner = "citizens" | "liar";
+export type LiarWinner = "citizens" | "liar" | "cancelled";
 
 export interface LiarPlayer {
   readonly userId: string;
