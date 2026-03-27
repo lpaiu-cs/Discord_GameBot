@@ -8,6 +8,7 @@ import { Client, Guild, GuildMember } from "discord.js";
 import { WebSocket } from "ws";
 import { GameStatsStore } from "../src/db/game-stats-store";
 import { PlayerDashboardStats } from "../src/db/player-dashboard-stats";
+import { EnsureUserProfileInput, UserProfile } from "../src/db/user-profile";
 import { GameRegistry, InMemoryGameRegistry } from "../src/game/game";
 import { JoinTicketService } from "../src/web/join-ticket";
 import { SessionStore, InMemorySessionStore } from "../src/web/session-store";
@@ -23,11 +24,34 @@ function createMember(id: string, displayName: string): GuildMember {
 
 class FakeGameStatsStore implements GameStatsStore {
   readonly enabled = true;
+  readonly ensuredProfiles: EnsureUserProfileInput[] = [];
 
   constructor(private readonly stats: PlayerDashboardStats | null) {}
 
   async initialize(): Promise<void> {
     return;
+  }
+
+  async ensureUserProfile(profile: EnsureUserProfileInput): Promise<void> {
+    this.ensuredProfiles.push(profile);
+  }
+
+  async getUserProfile(discordUserId: string): Promise<UserProfile | null> {
+    const profile = this.ensuredProfiles.find((entry) => entry.discordUserId === discordUserId);
+    if (!profile) {
+      return null;
+    }
+
+    const now = new Date();
+    return {
+      discordUserId: profile.discordUserId,
+      latestDisplayName: profile.displayName,
+      latestGuildId: profile.discordGuildId ?? null,
+      latestGuildName: profile.guildName ?? null,
+      firstSeenAt: now,
+      lastSeenAt: now,
+      lastPlayedAt: null,
+    };
   }
 
   async recordEndedGame(): Promise<void> {
@@ -298,6 +322,57 @@ test("개인 전적이 있으면 대시보드 상태 payload 에 포함된다", 
   assert.equal(payload.state.personalStats.roleStats[0].roleLabel, "마피아");
   assert.equal(payload.state.personalStats.recentMatches[0].resultLabel, "승리");
   assert.equal(payload.state.personalStats.recentMatches[0].guildName, "테스트 서버");
+});
+
+test("URL exchange 는 유저 프로필을 business DB 에 보장한다", async (t) => {
+  const manager = new InMemoryGameRegistry();
+  const guild = { id: "guild-1", name: "테스트 길드" } as Guild;
+  const host = createMember("user-1", "host");
+  const game = manager.create(guild, "channel-1", host, "balance");
+
+  game.phase = "discussion";
+  game.phaseContext = {
+    token: 1,
+    startedAt: Date.now(),
+    deadlineAt: Date.now() + 60_000,
+  };
+
+  const joinTicketService = new JoinTicketService("join-secret");
+  const sessionStore = new InMemorySessionStore("session-secret");
+  const gameStatsStore = new FakeGameStatsStore(null);
+  const server = new DashboardServer({
+    client: {} as Client,
+    gameManager: manager,
+    gameStatsStore,
+    joinTicketService,
+    sessionStore,
+    port: 0,
+    secureCookies: false,
+  });
+  const port = await server.listen();
+  t.after(async () => {
+    await server.close();
+  });
+
+  const ticket = joinTicketService.issue({
+    gameId: game.id,
+    discordUserId: "user-1",
+    ttlMs: 180_000,
+  });
+
+  const exchangeResponse = await fetch(`http://127.0.0.1:${port}/auth/exchange?ticket=${encodeURIComponent(ticket)}`, {
+    redirect: "manual",
+  });
+
+  assert.equal(exchangeResponse.status, 302);
+  assert.deepEqual(gameStatsStore.ensuredProfiles, [
+    {
+      discordUserId: "user-1",
+      displayName: "host",
+      discordGuildId: "guild-1",
+      guildName: "테스트 길드",
+    },
+  ]);
 });
 
 test("로컬 HTTP 프리뷰에서는 세션 쿠키에 Secure 를 붙이지 않는다", async (t) => {

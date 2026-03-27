@@ -1,4 +1,5 @@
 import { RouteContext } from "./context";
+import { ensureUserProfile } from "../../db/ensure-user-profile";
 import { sendHtml, cookieNameFor } from "./utils";
 
 export async function handleExchange(ctx: RouteContext): Promise<void> {
@@ -26,6 +27,14 @@ export async function handleExchange(ctx: RouteContext): Promise<void> {
     if (!game.hasParticipant(payload.discordUserId)) {
       throw new Error("현재 게임 참가자만 입장할 수 있습니다.");
     }
+
+    const player = game.getPlayer(payload.discordUserId);
+    await ensureUserProfile(ctx.gameStatsStore, {
+      discordUserId: payload.discordUserId,
+      displayName: player?.displayName ?? payload.discordUserId,
+      discordGuildId: game.guildId,
+      guildName: game.guildName,
+    });
 
     const session = ctx.sessionStore.create(payload.gameId, payload.discordUserId);
     const cookieValue = ctx.sessionStore.serializeCookieValue(session.id);

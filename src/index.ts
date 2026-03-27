@@ -12,6 +12,7 @@ import {
   StringSelectMenuInteraction,
 } from "discord.js";
 import { config } from "./config";
+import { ensureUserProfile as syncUserProfile } from "./db/ensure-user-profile";
 import { createGameStatsStore } from "./db/create-game-stats-store";
 import { buildDashboardReply, buildDashboardWaitingReply } from "./discord/dashboard";
 import { mafiaCommand, registerCommands } from "./discord/commands";
@@ -132,6 +133,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       // const ruleset = (interaction.options.getString("ruleset") ?? config.ruleset) as Ruleset;
       const ruleset: Ruleset = config.ruleset;
       game = createGame(manager, interaction, ruleset);
+      await syncParticipantProfile(game, interaction.user.id);
       await interaction.reply({ content: "로비를 만들었습니다.", flags: MessageFlags.Ephemeral });
       await game.sendOrUpdateLobby(client);
       return;
@@ -145,6 +147,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       await deferEphemeral(interaction);
       const member = await interaction.guild!.members.fetch(interaction.user.id);
       game.addPlayer(member);
+      await syncParticipantProfile(game, interaction.user.id);
       await game.sendOrUpdateLobby(client);
       await replyWithDashboardEntry(interaction, game);
       return;
@@ -389,6 +392,7 @@ async function handleLobbyButton(
 
   if (action === "join") {
     game.addPlayer(member);
+    await syncParticipantProfile(game, interaction.user.id);
     await game.sendOrUpdateLobby(client);
     await replyWithDashboardEntry(interaction, game, "join");
     return;
@@ -485,4 +489,18 @@ function cancelEndedGameCleanup(gameId: string): void {
 
   clearTimeout(existing);
   endedGameCleanupTimers.delete(gameId);
+}
+
+async function syncParticipantProfile(game: MafiaGame, discordUserId: string): Promise<void> {
+  const player = game.getPlayer(discordUserId);
+  if (!player) {
+    return;
+  }
+
+  await syncUserProfile(gameStatsStore, {
+    discordUserId,
+    displayName: player.displayName,
+    discordGuildId: game.guildId,
+    guildName: game.guildName,
+  });
 }

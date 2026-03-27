@@ -3,6 +3,7 @@ import { MafiaGame } from "../game/game";
 import { buildRecordedMatch } from "./match-record";
 import { GameStatsStore } from "./game-stats-store";
 import { PlayerDashboardStats, PlayerLifetimeStats, PlayerRecentMatch, PlayerRoleStat } from "./player-dashboard-stats";
+import { EnsureUserProfileInput, UserProfile } from "./user-profile";
 import { RecordedMatch, RecordedMatchPlayer } from "./types";
 
 export class PostgresGameStatsStore implements GameStatsStore {
@@ -16,6 +17,41 @@ export class PostgresGameStatsStore implements GameStatsStore {
 
   async close(): Promise<void> {
     await this.pool.end();
+  }
+
+  async ensureUserProfile(profile: EnsureUserProfileInput): Promise<void> {
+    const client = await this.pool.connect();
+
+    try {
+      if (profile.discordGuildId) {
+        await upsertGuildRecord(client, profile.discordGuildId, profile.guildName ?? null);
+      }
+
+      await upsertUserProfile(client, profile);
+    } finally {
+      client.release();
+    }
+  }
+
+  async getUserProfile(discordUserId: string): Promise<UserProfile | null> {
+    const result = await this.pool.query<UserProfileRow>(
+      `
+        select
+          discord_user_id,
+          latest_display_name,
+          latest_guild_id,
+          latest_guild_name,
+          first_seen_at,
+          last_seen_at,
+          last_played_at
+        from users
+        where discord_user_id = $1
+      `,
+      [discordUserId],
+    );
+
+    const row = result.rows[0];
+    return row ? mapUserProfileRow(row) : null;
   }
 
   async getPlayerDashboardStats(discordUserId: string): Promise<PlayerDashboardStats | null> {
@@ -105,7 +141,7 @@ export class PostgresGameStatsStore implements GameStatsStore {
     try {
       await client.query("begin");
       await upsertGuild(client, record);
-      await upsertUsers(client, record.players);
+      await upsertUsers(client, record);
       const matchId = await upsertMatch(client, record);
       await client.query("delete from match_players where match_id = $1", [matchId]);
       for (const player of record.players) {
@@ -126,6 +162,16 @@ export class PostgresGameStatsStore implements GameStatsStore {
       client.release();
     }
   }
+}
+
+interface UserProfileRow {
+  discord_user_id: string;
+  latest_display_name: string;
+  latest_guild_id: string | null;
+  latest_guild_name: string | null;
+  first_seen_at: Date;
+  last_seen_at: Date;
+  last_played_at: Date | null;
 }
 
 interface PlayerSummaryRow {
@@ -162,6 +208,18 @@ interface PlayerRecentMatchRow {
   death_reason: string | null;
 }
 
+function mapUserProfileRow(row: UserProfileRow): UserProfile {
+  return {
+    discordUserId: row.discord_user_id,
+    latestDisplayName: row.latest_display_name,
+    latestGuildId: row.latest_guild_id,
+    latestGuildName: row.latest_guild_name,
+    firstSeenAt: row.first_seen_at,
+    lastSeenAt: row.last_seen_at,
+    lastPlayedAt: row.last_played_at,
+  };
+}
+
 function mapRoleStatRow(row: PlayerRoleRow): PlayerRoleStat {
   return {
     role: row.role,
@@ -191,6 +249,24 @@ function mapRecentMatchRow(row: PlayerRecentMatchRow): PlayerRecentMatch {
 }
 
 async function upsertGuild(client: PoolClient, record: RecordedMatch): Promise<void> {
+  await upsertGuildRecord(client, record.discordGuildId, record.guildName);
+}
+
+async function upsertUsers(client: PoolClient, record: RecordedMatch): Promise<void> {
+  for (const player of record.players) {
+    await upsertUserProfile(client, {
+      discordUserId: player.discordUserId,
+      displayName: player.displayName,
+      discordGuildId: record.discordGuildId,
+      guildName: record.guildName,
+    }, {
+      seenAt: record.endedAt,
+      lastPlayedAt: record.endedAt,
+    });
+  }
+}
+
+async function upsertGuildRecord(client: PoolClient, discordGuildId: string, guildName: string | null): Promise<void> {
   await client.query(
     `
       insert into guilds (discord_guild_id, latest_name, created_at, updated_at)
@@ -199,23 +275,61 @@ async function upsertGuild(client: PoolClient, record: RecordedMatch): Promise<v
       set latest_name = excluded.latest_name,
           updated_at = now()
     `,
-    [record.discordGuildId, record.guildName],
+    [discordGuildId, guildName],
   );
 }
 
-async function upsertUsers(client: PoolClient, players: RecordedMatchPlayer[]): Promise<void> {
-  for (const player of players) {
-    await client.query(
-      `
-        insert into users (discord_user_id, latest_display_name, created_at, updated_at)
-        values ($1, $2, now(), now())
-        on conflict (discord_user_id) do update
-        set latest_display_name = excluded.latest_display_name,
-            updated_at = now()
-      `,
-      [player.discordUserId, player.displayName],
-    );
-  }
+interface UpsertUserProfileOptions {
+  seenAt?: Date;
+  lastPlayedAt?: Date | null;
+}
+
+async function upsertUserProfile(
+  client: PoolClient,
+  profile: EnsureUserProfileInput,
+  options: UpsertUserProfileOptions = {},
+): Promise<void> {
+  const seenAt = options.seenAt ?? new Date();
+  const lastPlayedAt = options.lastPlayedAt ?? null;
+
+  await client.query(
+    `
+      insert into users (
+        discord_user_id,
+        latest_display_name,
+        latest_guild_id,
+        latest_guild_name,
+        created_at,
+        updated_at,
+        first_seen_at,
+        last_seen_at,
+        last_played_at
+      )
+      values ($1, $2, $3, $4, now(), now(), $5, $5, $6)
+      on conflict (discord_user_id) do update
+      set latest_display_name = excluded.latest_display_name,
+          latest_guild_id = coalesce(excluded.latest_guild_id, users.latest_guild_id),
+          latest_guild_name = case
+            when excluded.latest_guild_id is not null then excluded.latest_guild_name
+            else users.latest_guild_name
+          end,
+          updated_at = now(),
+          last_seen_at = greatest(users.last_seen_at, excluded.last_seen_at),
+          last_played_at = case
+            when excluded.last_played_at is null then users.last_played_at
+            when users.last_played_at is null then excluded.last_played_at
+            else greatest(users.last_played_at, excluded.last_played_at)
+          end
+    `,
+    [
+      profile.discordUserId,
+      profile.displayName,
+      profile.discordGuildId ?? null,
+      profile.guildName ?? null,
+      seenAt,
+      lastPlayedAt,
+    ],
+  );
 }
 
 async function upsertMatch(client: PoolClient, record: RecordedMatch): Promise<number> {

@@ -2,9 +2,29 @@ create table if not exists users (
   id bigserial primary key,
   discord_user_id text not null unique,
   latest_display_name text not null,
+  latest_guild_id text,
+  latest_guild_name text,
+  first_seen_at timestamptz not null default now(),
+  last_seen_at timestamptz not null default now(),
+  last_played_at timestamptz,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table users add column if not exists latest_guild_id text;
+alter table users add column if not exists latest_guild_name text;
+alter table users add column if not exists first_seen_at timestamptz;
+alter table users add column if not exists last_seen_at timestamptz;
+alter table users add column if not exists last_played_at timestamptz;
+update users
+set
+  first_seen_at = coalesce(first_seen_at, created_at),
+  last_seen_at = coalesce(last_seen_at, updated_at, created_at)
+where first_seen_at is null or last_seen_at is null;
+alter table users alter column first_seen_at set default now();
+alter table users alter column last_seen_at set default now();
+alter table users alter column first_seen_at set not null;
+alter table users alter column last_seen_at set not null;
 
 create table if not exists guilds (
   id bigserial primary key,
