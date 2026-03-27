@@ -16,6 +16,11 @@
     "dev:mafia:practice3": "cross-env PRACTICE_SCENARIO=practice3 DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx mafia/src/dev/web-practice.ts",
     "dev:mafia:practice4": "cross-env PRACTICE_SCENARIO=practice4 DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx mafia/src/dev/web-practice.ts",
     "dev:mafia:practice:all": "cross-env PRACTICE_SCENARIO=all DISCORD_BOT_TOKEN=practice-token DISCORD_APPLICATION_ID=practice-app PUBLIC_BASE_URL=http://localhost:3014 WEB_SESSION_SECRET=practice-web-session-secret JOIN_TICKET_SECRET=practice-join-ticket-secret tsx mafia/src/dev/web-practice.ts",
+    "pm2:start": "npm run build && pm2 start ecosystem.config.cjs --only discord-game-bot",
+    "pm2:restart": "npm run build && pm2 startOrRestart ecosystem.config.cjs --only discord-game-bot",
+    "pm2:stop": "pm2 stop discord-game-bot",
+    "pm2:delete": "pm2 delete discord-game-bot",
+    "pm2:logs": "pm2 logs discord-game-bot",
     "start": "node dist/mafia/src/index.js",
     "test": "cross-env DISCORD_BOT_TOKEN=test-token DISCORD_APPLICATION_ID=test-app PUBLIC_BASE_URL=https://mafia.test WEB_SESSION_SECRET=test-web-secret JOIN_TICKET_SECRET=test-join-secret tsx --test mafia/tests/all.test.ts liar/tests/all.test.ts"
   },
