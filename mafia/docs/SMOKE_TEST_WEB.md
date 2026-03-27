@@ -15,7 +15,7 @@
 실제 Discord 없이 웹 UI 를 바로 보려면:
 
 ```bash
-npm run dev:preview
+npm run dev:mafia:preview
 ```
 
 기본 프리뷰:
@@ -31,7 +31,7 @@ PowerShell 예시:
 $env:PREVIEW_PHASE='discussion'
 $env:PREVIEW_ROLE='reporter'
 $env:PREVIEW_RULESET='balance'
-npm run dev:preview
+npm run dev:mafia:preview
 ```
 
 이 경로로 확인할 수 있는 것:
@@ -52,7 +52,7 @@ npm run dev:preview
 실제 게임처럼 몇 초 간격으로 NPC 가 움직이는 예시를 보려면:
 
 ```bash
-npm run dev:practice1
+npm run dev:mafia:practice1
 ```
 
 시나리오별 실행:
@@ -63,15 +63,15 @@ npm run dev:practice1
 - `practice4`: 사망자 시점, 망자 채팅 read/write 확인
 
 ```bash
-npm run dev:practice2
-npm run dev:practice3
-npm run dev:practice4
+npm run dev:mafia:practice2
+npm run dev:mafia:practice3
+npm run dev:mafia:practice4
 ```
 
 모든 시나리오를 동시에 띄우려면:
 
 ```bash
-npm run dev:practice:all
+npm run dev:mafia:practice:all
 ```
 
 이 경로로 확인할 수 있는 것:
@@ -94,17 +94,17 @@ npm run dev:practice:all
    - `WEB_SESSION_SECRET`
    - `JOIN_TICKET_SECRET`
    - `WEB_MODE=fixed`
-2. `npm run dev`
+2. `npm run dev:mafia`
 3. Discord 테스트 서버에서 봇이 slash command 를 등록했는지 확인
 
 ### 체크리스트
 
 - `/mafia create` 로 로비 생성
-- A, B 계정이 각각 `/mafia join` 또는 `참가` 버튼 사용
+- A, B 계정이 각각 `참가` 버튼 사용
 - 각 계정이 ephemeral 메시지에서 서로 다른 입장 URL 을 받는지 확인
 - 링크가 `/auth/exchange?ticket=` 형태인지 확인
 - 같은 링크를 두 번 열면 두 번째는 실패하는지 확인
-- `/mafia dashboard` 또는 `/mafia rejoin` 으로 새 링크가 재발급되는지 확인
+- `/mafia dashboard` 로 새 링크가 재발급되는지 확인
 - 첫 링크로 만든 세션이 새 링크 교환 뒤 무효화되는지 확인
 - `/game/:gameId` 에 role/raw state 가 query string 으로 노출되지 않는지 확인
 - 브라우저 쿠키가 `gameId`별로 분리되며, `HttpOnly`, `Secure`, `SameSite=Lax` 로 내려가는지 확인
@@ -123,7 +123,7 @@ npm run dev:practice:all
 
 - 8명 모두 Discord 로비에서 참가
 - 8명 모두 개인 URL 을 수신
-- 1명 이상이 링크를 잃어버린 뒤 `/mafia rejoin` 으로 복구
+- 1명 이상이 링크를 잃어버린 뒤 `/mafia dashboard` 로 복구
 - 참가자 외 유저가 `/mafia dashboard` 를 실행했을 때 거부
 
 ### 게임 진행
@@ -141,11 +141,11 @@ npm run dev:practice:all
 - ended 상태 대시보드에서 최종 결과를 읽을 수 있는지 확인
 - 새 `/mafia create` 시 이전 ended game 이 새 로비로 교체되는지 확인
 
-## reconnect / rejoin 검증
+## reconnect / dashboard 재발급 검증
 
 - 브라우저 새로고침 후 기존 세션 유지 확인
 - 다른 브라우저에서 같은 링크 재사용 실패 확인
-- `/mafia rejoin` 으로 새 링크 발급 후 이전 브라우저 세션이 401 로 막히는지 확인
+- `/mafia dashboard` 로 새 링크 발급 후 이전 브라우저 세션이 401 로 막히는지 확인
 - 탭 복제 후 오래된 세션으로 action/chat 제출 시 거부되는지 확인
 
 ## quick_tunnel 실험 체크

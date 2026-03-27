@@ -3,6 +3,7 @@ import "./dashboard-access.test";
 import "./dashboard-server.test";
 import "./game.test";
 import "./game-stats-record.test";
+import "./liar-game-stats-record.test";
 import "./join-ticket.test";
 import "./public-base-url.test";
 import "./session-store.test";

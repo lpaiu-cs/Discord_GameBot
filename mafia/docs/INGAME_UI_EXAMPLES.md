@@ -40,7 +40,7 @@
 - 입장 URL 은 `/auth/exchange?ticket=...`
 - ticket 은 1회용 join ticket
 - exchange 성공 시 세션 쿠키를 발급하고 `/game/:gameId` 로 이동
-- 링크를 잃어버리면 `/mafia dashboard` 또는 `/mafia rejoin` 으로 새 링크를 다시 받는다
+- 링크를 잃어버리면 `/mafia dashboard` 로 새 링크를 다시 받는다
 
 ## 3. 모바일 공통 구조
 
@@ -199,7 +199,7 @@
 
 ## 10. 개발자 프리뷰 확인 포인트
 
-`npm run dev:preview` 로 다음을 빠르게 점검할 수 있다.
+`npm run dev:mafia:preview` 로 다음을 빠르게 점검할 수 있다.
 
 - `/auth/exchange` -> 세션 쿠키 -> `/game/:gameId`
 - 모바일 하단 도크

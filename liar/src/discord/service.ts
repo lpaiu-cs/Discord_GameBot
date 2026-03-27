@@ -14,11 +14,11 @@ import {
   StringSelectMenuOptionBuilder,
   TextBasedChannel,
 } from "discord.js";
-import { liarCategories } from "../content/categories";
+import { getLiarCategories } from "../content/categories";
 import { LiarGame } from "../engine/game";
 import { InMemoryLiarGameRegistry } from "../engine/registry";
 import { LiarResult, LiarVoteResolution } from "../engine/model";
-import { liarCreateCommand, liarKeywordCommand } from "./commands";
+import { LIAR_CREATE_SUBCOMMAND, LIAR_STATS_SUBCOMMAND, liarCommand, liarKeywordCommand } from "./commands";
 
 const PREFIX_VOTE = "!투표";
 const LOBBY_TIMEOUT_MS = 10 * 60_000;
@@ -27,6 +27,7 @@ const VOTING_TIMEOUT_MS = 45_000;
 const GUESS_TIMEOUT_MS = 30_000;
 const DEFAULT_WARNING_MS = 10_000;
 const LOBBY_WARNING_MS = 60_000;
+const GUIDANCE_COOLDOWN_MS = 7_000;
 
 type LiarTextChannel = TextBasedChannel & {
   messages: {
@@ -35,13 +36,66 @@ type LiarTextChannel = TextBasedChannel & {
   send: (payload: { content: string; components?: any[] }) => Promise<{ id: string }>;
 };
 
+interface LiarDiscordServiceOptions {
+  onUserSeen?: (profile: {
+    discordUserId: string;
+    displayName: string;
+    discordGuildId: string;
+    guildName: string;
+  }) => Promise<void>;
+  onGameEnded?: (game: LiarGame) => Promise<void>;
+  loadStats?: (discordUserId: string) => Promise<LiarStatsSummary | null>;
+}
+
+interface LiarStatsSummary {
+  discordUserId: string;
+  latestDisplayName: string;
+  lifetime: {
+    matchesPlayed: number;
+    cancelledMatches: number;
+    wins: number;
+    losses: number;
+    liarMatches: number;
+    citizenMatches: number;
+    liarWins: number;
+    citizenWins: number;
+  };
+  streaks: {
+    currentWinStreak: number;
+    bestWinStreak: number;
+  };
+  categoryStats: Array<{
+    categoryId: string;
+    categoryLabel: string;
+    plays: number;
+    wins: number;
+    losses: number;
+  }>;
+  recentMatches: Array<{
+    guildName: string | null;
+    categoryLabel: string;
+    status: "completed" | "cancelled";
+    winner: "liar" | "citizens" | null;
+    endedReason: string | null;
+    playerCount: number;
+    endedAt: Date;
+    wasLiar: boolean;
+    wasAccused: boolean;
+    isWinner: boolean;
+  }>;
+}
+
 export class LiarDiscordService {
   private readonly registry = new InMemoryLiarGameRegistry();
   private readonly phaseTimers = new Map<string, NodeJS.Timeout>();
   private readonly warningTimers = new Map<string, NodeJS.Timeout>();
+  private readonly guidanceCooldowns = new Map<string, number>();
+  private readonly persistedEndedGames = new Set<string>();
+
+  constructor(private readonly options: LiarDiscordServiceOptions = {}) {}
 
   get commandDefinitions(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
-    return [liarCreateCommand.toJSON(), liarKeywordCommand.toJSON()];
+    return [liarCommand.toJSON(), liarKeywordCommand.toJSON()];
   }
 
   async handleCommand(client: Client, interaction: ChatInputCommandInteraction): Promise<boolean> {
@@ -50,8 +104,18 @@ export class LiarDiscordService {
       return true;
     }
 
-    if (interaction.commandName !== liarCreateCommand.name) {
+    if (interaction.commandName !== liarCommand.name) {
       return false;
+    }
+
+    const subcommand = interaction.options.getSubcommand();
+    if (subcommand === LIAR_STATS_SUBCOMMAND) {
+      await this.handleStatsCommand(interaction);
+      return true;
+    }
+
+    if (subcommand !== LIAR_CREATE_SUBCOMMAND) {
+      throw new Error("지원하지 않는 라이어게임 명령입니다.");
     }
 
     if (!interaction.guildId || !interaction.guild) {
@@ -64,7 +128,7 @@ export class LiarDiscordService {
     }
 
     if (game?.phase === "ended") {
-      this.clearPhaseAutomation(game.id);
+      this.clearGameRuntimeState(game.id);
       this.registry.delete(interaction.guildId);
     }
 
@@ -76,6 +140,7 @@ export class LiarDiscordService {
       hostId: interaction.user.id,
       hostDisplayName: member.displayName,
     });
+    await this.syncSeenUser(game.guildId, game.guildName, interaction.user.id, member.displayName);
 
     await this.replyEphemeral(interaction, "라이어게임 로비를 만들었습니다.");
     await this.resetPhaseState(client, game, interaction.channel ?? null);
@@ -105,6 +170,7 @@ export class LiarDiscordService {
       case "join": {
         const member = await interaction.guild.members.fetch(interaction.user.id);
         game.addPlayer(interaction.user.id, member.displayName);
+        await this.syncSeenUser(game.guildId, game.guildName, interaction.user.id, member.displayName);
         await this.replyEphemeral(interaction, "라이어게임에 참가했습니다.");
         await this.resetPhaseState(client, game, interaction.channel ?? null);
         return true;
@@ -130,7 +196,12 @@ export class LiarDiscordService {
       }
       case "start": {
         this.assertHost(interaction.user.id, game);
-        game.start();
+        game.start(Math.random, {
+          excludedWords: this.registry.getRecentWords(game.guildId, game.categoryId, game.category.words),
+        });
+        if (game.secretWord) {
+          this.registry.recordUsedWord(game.guildId, game.categoryId, game.secretWord, game.category.words);
+        }
         await this.replyEphemeral(interaction, "라이어게임을 시작했습니다. 각 참가자는 `/제시어` 를 확인하세요.");
         await this.resetPhaseState(client, game, interaction.channel ?? null);
         await this.sendPublicMessage(
@@ -202,6 +273,40 @@ export class LiarDiscordService {
     return true;
   }
 
+  async handleMemberLeave(client: Client, guildId: string, userId: string): Promise<boolean> {
+    const game = this.registry.get(guildId);
+    if (!game || !game.isParticipant(userId) || game.phase === "ended") {
+      return false;
+    }
+
+    const player = game.getPlayer(userId);
+    if (game.phase === "lobby") {
+      const previousHostId = game.hostId;
+      game.removePlayer(userId);
+
+      if (game.playerCount === 0) {
+        const result = game.forceEnd("참가자가 모두 나가 로비를 닫았습니다.");
+        await this.resetPhaseState(client, game);
+        await this.sendPublicMessage(client, game, this.buildResultAnnouncement(game, result));
+        return true;
+      }
+
+      await this.resetPhaseState(client, game);
+      const lines = [`${player?.displayName ?? "참가자"} 님이 서버에서 나가 로비에서 제외되었습니다.`];
+      if (previousHostId === userId && game.hostId) {
+        const nextHost = game.getPlayer(game.hostId);
+        lines.push(`${nextHost?.displayName ?? "다음 참가자"} 님이 새 방장이 되었습니다.`);
+      }
+      await this.sendPublicMessage(client, game, lines.join("\n"));
+      return true;
+    }
+
+    const result = game.forceEnd(`${player?.displayName ?? "참가자"} 님이 서버에서 나가 게임을 종료했습니다.`);
+    await this.resetPhaseState(client, game);
+    await this.sendPublicMessage(client, game, this.buildResultAnnouncement(game, result));
+    return true;
+  }
+
   async handleMessage(client: Client, message: Message): Promise<boolean> {
     if (!message.inGuild() || message.author.bot) {
       return false;
@@ -222,10 +327,23 @@ export class LiarDiscordService {
       return true;
     }
 
+    if (!game.isParticipant(message.author.id)) {
+      return false;
+    }
+
     if (game.phase === "clue") {
       const currentSpeaker = game.getCurrentSpeaker();
       if (!currentSpeaker || currentSpeaker.userId !== message.author.id) {
-        return false;
+        await this.suppressParticipantMessage(message);
+        await this.sendGuidanceMessage(
+          client,
+          game,
+          message.author.id,
+          `지금은 ${currentSpeaker?.displayName ?? "현재 차례 플레이어"} 님의 설명 차례입니다.`,
+          `clue:${message.author.id}`,
+          message.channel,
+        );
+        return true;
       }
 
       const result = game.submitClue(message.author.id, content);
@@ -245,7 +363,34 @@ export class LiarDiscordService {
       return true;
     }
 
-    if (game.phase === "guess" && message.author.id === game.liarId) {
+    if (game.phase === "voting" && game.isParticipant(message.author.id)) {
+      await this.suppressParticipantMessage(message);
+      await this.sendGuidanceMessage(
+        client,
+        game,
+        message.author.id,
+        "지금은 투표 단계입니다. `!투표 @대상` 형식으로만 입력하세요.",
+        `voting:${message.author.id}`,
+        message.channel,
+      );
+      return true;
+    }
+
+    if (game.phase === "guess") {
+      if (message.author.id !== game.liarId) {
+        const liar = game.liarId ? game.getPlayer(game.liarId) : null;
+        await this.suppressParticipantMessage(message);
+        await this.sendGuidanceMessage(
+          client,
+          game,
+          message.author.id,
+          `지금은 ${liar?.displayName ?? "지목된 라이어"} 님만 정답을 입력할 수 있습니다.`,
+          `guess:${message.author.id}`,
+          message.channel,
+        );
+        return true;
+      }
+
       const result = game.guessWord(message.author.id, content);
       await this.resetPhaseState(client, game, message.channel);
       await this.sendPublicMessage(client, game, this.buildResultAnnouncement(game, result), message.channel);
@@ -269,25 +414,81 @@ export class LiarDiscordService {
     await this.replyEphemeral(interaction, keywordView.message);
   }
 
+  private async handleStatsCommand(interaction: ChatInputCommandInteraction): Promise<void> {
+    if (!this.options.loadStats) {
+      throw new Error("현재 라이어 전적 조회를 사용할 수 없습니다.");
+    }
+
+    const targetUser = interaction.options.getUser("target");
+    const targetUserId = targetUser?.id ?? interaction.user.id;
+    const stats = await this.options.loadStats(targetUserId);
+
+    if (!stats || (stats.lifetime.matchesPlayed === 0 && stats.lifetime.cancelledMatches === 0)) {
+      await this.replyEphemeral(interaction, `${targetUser?.username ?? interaction.user.username} 님의 라이어 전적이 아직 없습니다.`);
+      return;
+    }
+
+    await this.replyEphemeral(interaction, this.buildStatsMessage(stats));
+  }
+
   private async handleVoteMessage(client: Client, message: Message, game: LiarGame): Promise<void> {
     if (game.phase !== "voting") {
-      throw new Error("지금은 투표 단계가 아닙니다.");
+      await this.sendGuidanceMessage(client, game, message.author.id, "지금은 투표 단계가 아닙니다.", `vote:${message.author.id}`, message.channel);
+      return;
     }
 
     if (!game.isParticipant(message.author.id)) {
-      throw new Error("현재 라이어게임 참가자만 투표할 수 있습니다.");
+      await this.sendGuidanceMessage(
+        client,
+        game,
+        message.author.id,
+        "현재 라이어게임 참가자만 투표할 수 있습니다.",
+        `vote:${message.author.id}`,
+        message.channel,
+      );
+      return;
     }
 
     if (message.mentions.users.size !== 1) {
-      throw new Error("`!투표 @대상` 형식으로 한 명만 지목하세요.");
+      await this.sendGuidanceMessage(
+        client,
+        game,
+        message.author.id,
+        "`!투표 @대상` 형식으로 한 명만 지목하세요.",
+        `vote:${message.author.id}`,
+        message.channel,
+      );
+      return;
     }
 
     const target = message.mentions.users.first();
     if (!target) {
-      throw new Error("투표 대상을 찾을 수 없습니다.");
+      await this.sendGuidanceMessage(
+        client,
+        game,
+        message.author.id,
+        "투표 대상을 찾을 수 없습니다.",
+        `vote:${message.author.id}`,
+        message.channel,
+      );
+      return;
     }
 
-    const voteResult = game.submitVote(message.author.id, target.id);
+    let voteResult: ReturnType<LiarGame["submitVote"]>;
+    try {
+      voteResult = game.submitVote(message.author.id, target.id);
+    } catch (error) {
+      await this.sendGuidanceMessage(
+        client,
+        game,
+        message.author.id,
+        error instanceof Error ? error.message : "투표를 처리하지 못했습니다.",
+        `vote:${message.author.id}`,
+        message.channel,
+      );
+      return;
+    }
+
     const voter = game.getPlayer(message.author.id);
     const targetPlayer = game.getPlayer(target.id);
     await this.sendPublicMessage(
@@ -316,6 +517,10 @@ export class LiarDiscordService {
   }
 
   private async resetPhaseState(client: Client, game: LiarGame, preferredChannel: Channel | null = null): Promise<void> {
+    if (game.phase === "ended") {
+      this.clearGuidanceCooldowns(game.id);
+      await this.persistEndedGame(game);
+    }
     this.schedulePhaseAutomation(client, game);
     await this.syncStatusMessage(client, game, preferredChannel);
   }
@@ -362,6 +567,20 @@ export class LiarDiscordService {
       clearTimeout(warningTimer);
       this.warningTimers.delete(gameId);
     }
+  }
+
+  private clearGuidanceCooldowns(gameId: string): void {
+    for (const key of [...this.guidanceCooldowns.keys()]) {
+      if (key.startsWith(`${gameId}:`)) {
+        this.guidanceCooldowns.delete(key);
+      }
+    }
+  }
+
+  private clearGameRuntimeState(gameId: string): void {
+    this.clearPhaseAutomation(gameId);
+    this.clearGuidanceCooldowns(gameId);
+    this.persistedEndedGames.delete(gameId);
   }
 
   private async handlePhaseWarning(client: Client, guildId: string, gameId: string): Promise<void> {
@@ -501,6 +720,7 @@ export class LiarDiscordService {
 
     if (game.phase === "clue") {
       lines.push("현재 차례인 참가자가 채널에 일반 메시지 한 줄을 입력하면 설명으로 처리됩니다.");
+      lines.push("현재 차례가 아닌 참가자의 일반 메시지는 정리되거나 안내 메시지로 되돌려질 수 있습니다.");
       lines.push(`설명 제한 시간: ${Math.floor(CLUE_TIMEOUT_MS / 1_000)}초`);
     }
 
@@ -510,6 +730,7 @@ export class LiarDiscordService {
 
     if (game.phase === "voting") {
       lines.push("투표 형식: `!투표 @대상`");
+      lines.push("참가자의 일반 메시지는 투표 형식이 아니면 정리될 수 있습니다.");
       lines.push("시간이 끝나면 현재 표로 자동 집계됩니다.");
       lines.push("방장은 `강제 집계` 버튼으로 먼저 마감할 수 있습니다.");
     }
@@ -517,6 +738,7 @@ export class LiarDiscordService {
     if (game.phase === "guess") {
       const liar = game.liarId ? game.getPlayer(game.liarId) : null;
       lines.push(`${liar?.displayName ?? "지목된 라이어"} 님은 채널에 일반 메시지로 정답 단어를 한 번 입력하세요.`);
+      lines.push("다른 참가자의 일반 메시지는 정리되거나 안내 메시지로 되돌려질 수 있습니다.");
     }
 
     return {
@@ -547,7 +769,7 @@ export class LiarDiscordService {
           .setCustomId(`liar-category:${game.id}`)
           .setPlaceholder(`카테고리 선택 (현재: ${game.category.label})`)
           .addOptions(
-            liarCategories.map((category) =>
+            getLiarCategories(game.guildId).map((category) =>
               new StringSelectMenuOptionBuilder()
                 .setLabel(category.label)
                 .setValue(category.id)
@@ -665,6 +887,100 @@ export class LiarDiscordService {
     } catch {
       const message = await channel.send(payload);
       game.statusMessageId = message.id;
+    }
+  }
+
+  private async suppressParticipantMessage(message: Message): Promise<void> {
+    try {
+      await message.delete();
+    } catch {
+      return;
+    }
+  }
+
+  private async sendGuidanceMessage(
+    client: Client,
+    game: LiarGame,
+    userId: string,
+    content: string,
+    keySuffix: string,
+    preferredChannel: Channel | null = null,
+  ): Promise<void> {
+    const key = `${game.id}:${keySuffix}`;
+    const now = Date.now();
+    const previous = this.guidanceCooldowns.get(key) ?? 0;
+    if (now - previous < GUIDANCE_COOLDOWN_MS) {
+      return;
+    }
+
+    this.guidanceCooldowns.set(key, now);
+    await this.sendPublicMessage(client, game, `<@${userId}> ${content}`, preferredChannel);
+  }
+
+  private buildStatsMessage(stats: LiarStatsSummary): string {
+    const matchesPlayed = stats.lifetime.matchesPlayed;
+    const winRate = matchesPlayed === 0 ? 0 : Math.round((stats.lifetime.wins / matchesPlayed) * 100);
+    const liarLosses = Math.max(0, stats.lifetime.liarMatches - stats.lifetime.liarWins);
+    const citizenLosses = Math.max(0, stats.lifetime.citizenMatches - stats.lifetime.citizenWins);
+    const lines = [
+      `라이어 전적: ${stats.latestDisplayName}`,
+      `완료 ${matchesPlayed}판 · ${stats.lifetime.wins}승 ${stats.lifetime.losses}패 · 승률 ${winRate}% · 취소 ${stats.lifetime.cancelledMatches}판`,
+      `역할 전적: 라이어 ${stats.lifetime.liarMatches}판 ${stats.lifetime.liarWins}승 ${liarLosses}패 · 시민 ${stats.lifetime.citizenMatches}판 ${stats.lifetime.citizenWins}승 ${citizenLosses}패`,
+      `연승: 현재 ${stats.streaks.currentWinStreak}연승 · 최고 ${stats.streaks.bestWinStreak}연승`,
+    ];
+
+    if (stats.categoryStats.length > 0) {
+      lines.push("카테고리 전적:");
+      for (const [index, category] of stats.categoryStats.slice(0, 3).entries()) {
+        lines.push(`${index + 1}. ${category.categoryLabel} · ${category.plays}판 ${category.wins}승 ${category.losses}패`);
+      }
+    }
+
+    if (stats.recentMatches.length > 0) {
+      lines.push("최근 경기:");
+      for (const [index, match] of stats.recentMatches.slice(0, 5).entries()) {
+        const resultLabel = match.status === "cancelled" ? "취소" : match.isWinner ? "승리" : "패배";
+        const roleLabel = match.wasLiar ? "라이어" : "시민";
+        const accusedLabel = match.wasAccused ? "지목" : "미지목";
+        lines.push(
+          `${index + 1}. ${resultLabel} · ${roleLabel} · ${match.categoryLabel} · ${accusedLabel} · ${this.formatDate(match.endedAt)}${
+            match.guildName ? ` · ${match.guildName}` : ""
+          }`,
+        );
+      }
+    }
+
+    return lines.join("\n");
+  }
+
+  private formatDate(value: Date): string {
+    return value.toISOString().slice(0, 10);
+  }
+
+  private async syncSeenUser(guildId: string, guildName: string, userId: string, displayName: string): Promise<void> {
+    if (!this.options.onUserSeen) {
+      return;
+    }
+
+    await this.options.onUserSeen({
+      discordUserId: userId,
+      displayName,
+      discordGuildId: guildId,
+      guildName,
+    });
+  }
+
+  private async persistEndedGame(game: LiarGame): Promise<void> {
+    if (!this.options.onGameEnded || this.persistedEndedGames.has(game.id)) {
+      return;
+    }
+
+    this.persistedEndedGames.add(game.id);
+    try {
+      await this.options.onGameEnded(game);
+    } catch (error) {
+      this.persistedEndedGames.delete(game.id);
+      throw error;
     }
   }
 

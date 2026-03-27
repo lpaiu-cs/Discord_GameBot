@@ -50,6 +50,28 @@ test("참가자는 /제시어 로 자기 정보만 확인한다", () => {
   assert.equal(citizenView.keyword, "김치찌개");
 });
 
+test("최근 사용 제시어는 다음 시작에서 우선 제외할 수 있다", () => {
+  const game = createGame();
+  seedPlayers(game);
+
+  game.start(() => 0, { excludedWords: ["김치찌개"] });
+
+  assert.equal(game.secretWord, "비빔밥");
+});
+
+test("길드 교체 팩이 있으면 그 길드 전용 기본 카테고리로 시작한다", () => {
+  const game = new LiarGame({
+    guildId: "example-replace-pack",
+    guildName: "교체 팩 길드",
+    channelId: "channel-1",
+    hostId: "host",
+    hostDisplayName: "방장",
+  });
+
+  assert.equal(game.category.id, "k-snack");
+  assert.equal(game.category.label, "분식");
+});
+
 test("설명 제출이 모두 끝나면 토론 단계로 넘어간다", () => {
   const game = createGame();
   seedPlayers(game);

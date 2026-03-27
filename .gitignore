@@ -8,6 +8,31 @@ liar/dist
 mafia/node_modules
 liar/node_modules
 
+# Local runtime data
+mafia/.cache/
+mafia/.runtime/
+mafia/runtime/
+mafia/runtime-data/
+mafia/logs/
+mafia/tmp/
+mafia/temp/
+mafia/*.db
+mafia/*.db-*
+mafia/*.sqlite
+mafia/*.sqlite-*
+
+liar/.cache/
+liar/.runtime/
+liar/runtime/
+liar/runtime-data/
+liar/logs/
+liar/tmp/
+liar/temp/
+liar/*.db
+liar/*.db-*
+liar/*.sqlite
+liar/*.sqlite-*
+
 package-lock.json
 
 .env

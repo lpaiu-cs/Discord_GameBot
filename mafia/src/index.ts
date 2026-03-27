@@ -16,6 +16,7 @@ import { LiarDiscordService } from "../../liar/src";
 import { config } from "./config";
 import { ensureUserProfile as syncUserProfile } from "./db/ensure-user-profile";
 import { createGameStatsStore } from "./db/create-game-stats-store";
+import { buildRecordedLiarMatch } from "./db/liar-match-record";
 import { buildDashboardReply, buildDashboardWaitingReply } from "./discord/dashboard";
 import { mafiaCommand, registerCommands } from "./discord/commands";
 import { GameRegistry, InMemoryGameRegistry, MafiaGame, createGame } from "./game/game";
@@ -50,7 +51,21 @@ const dashboardAccess = new DashboardAccessService(
   joinTicketService,
   config.joinTicketTtlSeconds * 1_000,
 );
-const liarService = new LiarDiscordService();
+const liarService = new LiarDiscordService({
+  onUserSeen: async (profile) => {
+    await syncUserProfile(gameStatsStore, profile);
+  },
+  onGameEnded: async (game) => {
+    if (!gameStatsStore.enabled) {
+      return;
+    }
+
+    await gameStatsStore.recordEndedLiarGame(buildRecordedLiarMatch(game));
+  },
+  loadStats: async (discordUserId) => {
+    return await gameStatsStore.getLiarPlayerStats(discordUserId);
+  },
+});
 const dashboardServer = new DashboardServer({
   client,
   gameManager: manager,
@@ -117,6 +132,14 @@ client.on(Events.MessageCreate, async (message) => {
   }
 });
 
+client.on(Events.GuildMemberRemove, async (member) => {
+  try {
+    await liarService.handleMemberLeave(client, member.guild.id, member.id);
+  } catch (error) {
+    console.error(error);
+  }
+});
+
 async function handleCommand(interaction: ChatInputCommandInteraction): Promise<void> {
   if (await liarService.handleCommand(client, interaction)) {
     return;
@@ -154,51 +177,7 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       await game.sendOrUpdateLobby(client);
       return;
     }
-    case "join": {
-      if (!game) {
-        throw new Error("현재 채널에 로비가 없습니다.");
-      }
-      assertGameChannel(interaction, game);
-
-      await deferEphemeral(interaction);
-      const member = await interaction.guild!.members.fetch(interaction.user.id);
-      game.addPlayer(member);
-      await syncParticipantProfile(game, interaction.user.id);
-      await game.sendOrUpdateLobby(client);
-      await replyWithDashboardEntry(interaction, game);
-      return;
-    }
-    case "leave": {
-      if (!game) {
-        throw new Error("현재 채널에 로비가 없습니다.");
-      }
-      assertGameChannel(interaction, game);
-
-      await deferEphemeral(interaction);
-      game.removePlayer(interaction.user.id);
-      await game.sendOrUpdateLobby(client);
-      await sendEphemeralReply(interaction, { content: "로비에서 나갔습니다." });
-      return;
-    }
-    case "start": {
-      if (!game) {
-        throw new Error("현재 채널에 로비가 없습니다.");
-      }
-      assertGameChannel(interaction, game);
-
-      if (interaction.user.id !== game.hostId) {
-        throw new Error("게임 시작은 방장만 할 수 있습니다.");
-      }
-
-      await interaction.reply({
-        content: "게임을 시작합니다. Discord는 로비만 담당하고 실제 진행은 웹 대시보드에서 이뤄집니다.",
-        flags: MessageFlags.Ephemeral,
-      });
-      await game.start(client);
-      return;
-    }
-    case "dashboard":
-    case "rejoin": {
+    case "dashboard": {
       if (!game) {
         throw new Error("현재 진행 중이거나 대기 중인 게임이 없습니다.");
       }
@@ -208,62 +187,6 @@ async function handleCommand(interaction: ChatInputCommandInteraction): Promise<
       }
 
       await replyWithDashboardEntry(interaction, game);
-      return;
-    }
-    case "status": {
-      if (!game) {
-        throw new Error("현재 진행 중인 게임이 없습니다.");
-      }
-      assertGameChannel(interaction, game);
-
-      await deferEphemeral(interaction);
-      if (game.phase === "lobby") {
-        await game.sendOrUpdateLobby(client);
-      } else {
-        await game.sendOrUpdateStatus(client);
-      }
-      await sendEphemeralReply(interaction, { content: "현재 상태를 다시 표시했습니다." });
-      return;
-    }
-    case "reveal": {
-      if (!game) {
-        throw new Error("현재 진행 중인 게임이 없습니다.");
-      }
-      assertGameChannel(interaction, game);
-
-      if (interaction.user.id !== game.hostId) {
-        throw new Error("역할 공개는 방장만 볼 수 있습니다.");
-      }
-
-      await interaction.reply({ content: `\`\`\`\n${game.describeAssignments()}\n\`\`\``, flags: MessageFlags.Ephemeral });
-      return;
-    }
-    case "advance": {
-      if (!game) {
-        throw new Error("현재 진행 중인 게임이 없습니다.");
-      }
-      assertGameChannel(interaction, game);
-
-      if (interaction.user.id !== game.hostId) {
-        throw new Error("강제 진행은 방장만 할 수 있습니다.");
-      }
-
-      await interaction.reply({ content: "현재 단계를 넘깁니다.", flags: MessageFlags.Ephemeral });
-      await game.forceAdvance(client);
-      return;
-    }
-    case "end": {
-      if (!game) {
-        throw new Error("현재 진행 중인 게임이 없습니다.");
-      }
-      assertGameChannel(interaction, game);
-
-      if (interaction.user.id !== game.hostId) {
-        throw new Error("게임 종료는 방장만 할 수 있습니다.");
-      }
-
-      await interaction.reply({ content: "게임을 종료합니다.", flags: MessageFlags.Ephemeral });
-      await game.end(client, "방장이 게임을 종료했습니다.");
       return;
     }
     default:

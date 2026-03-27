@@ -64,6 +64,7 @@ export class LiarGame {
   accusedUserId: string | null = null;
   result: LiarResult | null = null;
   startedAt: number | null = null;
+  endedAt: number | null = null;
   phaseDeadlineAt: number | null = null;
 
   constructor(params: {
@@ -78,7 +79,7 @@ export class LiarGame {
     this.guildName = params.guildName ?? "";
     this.channelId = params.channelId;
     this.hostId = params.hostId;
-    this.categoryId = params.categoryId ?? getDefaultLiarCategory().id;
+    this.categoryId = params.categoryId ?? getDefaultLiarCategory(params.guildId).id;
     this.players.set(params.hostId, {
       userId: params.hostId,
       displayName: params.hostDisplayName,
@@ -91,7 +92,7 @@ export class LiarGame {
   }
 
   get category(): LiarCategory {
-    return getLiarCategory(this.categoryId) ?? getDefaultLiarCategory();
+    return getLiarCategory(this.categoryId, this.guildId) ?? getDefaultLiarCategory(this.guildId);
   }
 
   getCompletedClueTurns(): number {
@@ -163,14 +164,14 @@ export class LiarGame {
       throw new Error("카테고리는 로비에서만 바꿀 수 있습니다.");
     }
 
-    if (!getLiarCategory(categoryId)) {
+    if (!getLiarCategory(categoryId, this.guildId)) {
       throw new Error("지원하지 않는 카테고리입니다.");
     }
 
     this.categoryId = categoryId;
   }
 
-  start(random: RandomSource = Math.random): void {
+  start(random: RandomSource = Math.random, options: { excludedWords?: readonly string[] } = {}): void {
     if (this.phase !== "lobby") {
       throw new Error("이미 시작된 게임입니다.");
     }
@@ -181,9 +182,12 @@ export class LiarGame {
 
     const participants = [...this.players.values()].sort((left, right) => left.joinedAt - right.joinedAt);
     const liarIndex = Math.floor(random() * participants.length);
-    const keywordIndex = Math.floor(random() * this.category.words.length);
+    const excludedWords = new Set((options.excludedWords ?? []).map((word) => normalizeWord(word)));
+    const candidateWords = this.category.words.filter((word) => !excludedWords.has(normalizeWord(word)));
+    const wordPool = candidateWords.length > 0 ? candidateWords : [...this.category.words];
+    const keywordIndex = Math.floor(random() * wordPool.length);
     this.liarId = participants[liarIndex].userId;
-    this.secretWord = this.category.words[keywordIndex];
+    this.secretWord = wordPool[keywordIndex];
     this.turnOrder = shuffle(participants.map((player) => player.userId), random);
     this.phase = "clue";
     this.currentTurnIndex = 0;
@@ -192,6 +196,7 @@ export class LiarGame {
     this.votes.clear();
     this.accusedUserId = null;
     this.result = null;
+    this.endedAt = null;
     this.phaseDeadlineAt = null;
   }
 
@@ -349,6 +354,7 @@ export class LiarGame {
       };
       this.phase = "ended";
       this.result = result;
+      this.endedAt = Date.now();
       this.phaseDeadlineAt = null;
       return {
         accusedUserId: null,
@@ -387,6 +393,7 @@ export class LiarGame {
         };
     this.phase = "ended";
     this.result = result;
+    this.endedAt = Date.now();
     this.phaseDeadlineAt = null;
     return result;
   }
@@ -405,6 +412,7 @@ export class LiarGame {
     };
     this.phase = "ended";
     this.result = result;
+    this.endedAt = Date.now();
     this.phaseDeadlineAt = null;
     return result;
   }
@@ -418,6 +426,7 @@ export class LiarGame {
     };
     this.phase = "ended";
     this.result = result;
+    this.endedAt = Date.now();
     this.phaseDeadlineAt = null;
     return result;
   }
@@ -500,6 +509,7 @@ export class LiarGame {
       this.phase = "ended";
       this.accusedUserId = null;
       this.result = result;
+      this.endedAt = Date.now();
       this.phaseDeadlineAt = null;
       return {
         accusedUserId: null,
@@ -531,6 +541,7 @@ export class LiarGame {
     };
     this.phase = "ended";
     this.result = result;
+    this.endedAt = Date.now();
     this.phaseDeadlineAt = null;
     return {
       accusedUserId,

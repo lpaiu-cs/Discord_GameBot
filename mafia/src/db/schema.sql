@@ -84,5 +84,51 @@ create table if not exists player_role_stats (
   primary key (discord_user_id, role)
 );
 
+create table if not exists liar_matches (
+  id bigserial primary key,
+  external_game_id text not null unique,
+  discord_guild_id text not null references guilds(discord_guild_id),
+  category_id text not null,
+  category_label text not null,
+  secret_word text,
+  status text not null check (status in ('completed', 'cancelled')),
+  winner text check (winner in ('liar', 'citizens')),
+  ended_reason text,
+  guessed_word text,
+  accused_user_id text references users(discord_user_id),
+  player_count integer not null,
+  created_at timestamptz not null,
+  started_at timestamptz,
+  ended_at timestamptz not null
+);
+
+create table if not exists liar_match_players (
+  id bigserial primary key,
+  liar_match_id bigint not null references liar_matches(id) on delete cascade,
+  discord_user_id text not null references users(discord_user_id),
+  display_name text not null,
+  joined_order integer not null,
+  is_host boolean not null,
+  is_liar boolean not null,
+  was_accused boolean not null,
+  is_winner boolean not null,
+  submitted_clue boolean not null,
+  clue_order integer,
+  vote_target_user_id text references users(discord_user_id),
+  unique (liar_match_id, discord_user_id)
+);
+
+create table if not exists liar_player_lifetime_stats (
+  discord_user_id text primary key references users(discord_user_id) on delete cascade,
+  matches_played integer not null,
+  wins integer not null,
+  losses integer not null,
+  liar_wins integer not null,
+  citizen_wins integer not null,
+  updated_at timestamptz not null
+);
+
 create index if not exists idx_matches_guild_ended_at on matches (discord_guild_id, ended_at desc);
 create index if not exists idx_match_players_user on match_players (discord_user_id, match_id desc);
+create index if not exists idx_liar_matches_guild_ended_at on liar_matches (discord_guild_id, ended_at desc);
+create index if not exists idx_liar_match_players_user on liar_match_players (discord_user_id, liar_match_id desc);

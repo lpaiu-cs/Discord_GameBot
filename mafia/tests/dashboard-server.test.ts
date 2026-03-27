@@ -7,6 +7,8 @@ import { test } from "node:test";
 import { Client, Guild, GuildMember } from "discord.js";
 import { WebSocket } from "ws";
 import { GameStatsStore } from "../src/db/game-stats-store";
+import { LiarPlayerStats } from "../src/db/liar-player-stats";
+import { RecordedLiarMatch } from "../src/db/liar-types";
 import { PlayerDashboardStats } from "../src/db/player-dashboard-stats";
 import { EnsureUserProfileInput, UserProfile } from "../src/db/user-profile";
 import { GameRegistry, InMemoryGameRegistry } from "../src/game/game";
@@ -58,8 +60,16 @@ class FakeGameStatsStore implements GameStatsStore {
     return;
   }
 
+  async recordEndedLiarGame(_record: RecordedLiarMatch): Promise<void> {
+    return;
+  }
+
   async getPlayerDashboardStats(): Promise<PlayerDashboardStats | null> {
     return this.stats;
+  }
+
+  async getLiarPlayerStats(): Promise<LiarPlayerStats | null> {
+    return null;
   }
 
   async close(): Promise<void> {

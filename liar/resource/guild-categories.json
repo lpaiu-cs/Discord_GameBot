@@ -1,0 +1,38 @@
+{
+  "guilds": {
+    "example-extend-pack": {
+      "mode": "extend",
+      "categories": [
+        {
+          "id": "sports",
+          "label": "스포츠",
+          "words": [
+            "축구",
+            "야구",
+            "농구",
+            "배구",
+            "수영",
+            "탁구"
+          ]
+        }
+      ]
+    },
+    "example-replace-pack": {
+      "mode": "replace",
+      "categories": [
+        {
+          "id": "k-snack",
+          "label": "분식",
+          "words": [
+            "김밥",
+            "순대",
+            "튀김",
+            "라볶이",
+            "오뎅",
+            "핫도그"
+          ]
+        }
+      ]
+    }
+  }
+}

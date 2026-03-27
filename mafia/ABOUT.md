@@ -41,8 +41,8 @@
   - 참가 버튼
   - 게임 시작 안내
   - 개인 입장 URL ephemeral 발급
+  - `/mafia create`
   - `/mafia dashboard`
-  - `/mafia rejoin`
   - 공개 상태/결과 미러링
   - 게임 종료 요약 안내
 - Web 책임
@@ -66,13 +66,15 @@
 
 ## 웹 입장 흐름
 
-1. Discord 로비에서 `참가` 버튼 또는 `/mafia join` 사용
+1. Discord 로비에서 `참가` 버튼 사용
 2. 봇이 ephemeral 메시지로 개인 입장 링크를 발급
 3. 링크는 `1회용 join ticket` 을 포함한 `/auth/exchange?ticket=...` 형태
 4. 서버가 ticket 검증 후 세션 쿠키를 발급하고 `/game/:gameId` 로 이동
 5. 이후 웹 대시보드는 WebSocket 우선, 실패 시 version 기반 short polling fallback 으로 상태를 갱신
 
-ephemeral 메시지가 사라져도 `/mafia dashboard` 또는 `/mafia rejoin` 으로 새 링크를 재발급할 수 있다.
+ephemeral 메시지가 사라져도 `/mafia dashboard` 로 새 링크를 다시 받을 수 있다.
+
+현재 유지하는 마피아 slash command 는 `/mafia create`, `/mafia dashboard` 두 개뿐이다. 참가/나가기/시작은 모두 로비 버튼으로 처리한다.
 
 ## URL Provider
 

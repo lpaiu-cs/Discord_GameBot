@@ -5,5 +5,6 @@
 - [mafia/ABOUT.md](./mafia/ABOUT.md): 웹 대시보드 기반 마피아 모듈
 - [liar/ABOUT.md](./liar/ABOUT.md): Discord 채팅 기반 라이어게임 모듈
 - [liar/PLAN.md](./liar/PLAN.md): Discord 채팅 기반 라이어게임 계획
+- 라이어 모듈은 현재 resource 기반 제시어, 길드별 카테고리 팩 override, shared business DB 전적 저장, `/liar stats` 조회까지 포함한다.
 
 현재 루트 봇 런타임은 `mafia/`와 `liar/`를 함께 실행하며, 루트 `package.json`은 두 모듈을 함께 빌드하고 테스트한다.
