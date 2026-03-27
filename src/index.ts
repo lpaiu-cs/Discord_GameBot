@@ -11,15 +11,19 @@ import {
   Partials,
   StringSelectMenuInteraction,
 } from "discord.js";
+import { join as joinPath } from "node:path";
 import { config } from "./config";
 import { buildDashboardReply, buildDashboardWaitingReply } from "./discord/dashboard";
 import { mafiaCommand, registerCommands } from "./discord/commands";
-import { GameRegistry, InMemoryGameRegistry, MafiaGame, createGame } from "./game/game";
+import { MafiaGame, createGame } from "./game/game";
+import { PersistentGameRegistry } from "./game/persistent-registry";
 import { Ruleset } from "./game/model";
 import { DashboardAccessService } from "./web/access";
 import { JoinTicketService } from "./web/join-ticket";
 import { FixedBaseUrlProvider, QuickTunnelProvider } from "./web/public-base-url";
-import { SessionStore, InMemorySessionStore } from "./web/session-store";
+import { SessionStore } from "./web/session-store";
+import { PersistentSessionStore } from "./web/persistent-session-store";
+import { PersistentJoinTicketStore } from "./web/persistent-join-ticket-store";
 import { DashboardServer } from "./web/server";
 
 const client = new Client({
@@ -28,11 +32,21 @@ const client = new Client({
 });
 
 const endedGameCleanupTimers = new Map<string, NodeJS.Timeout>();
-const manager: GameRegistry = new InMemoryGameRegistry((game: MafiaGame) => {
-  scheduleEndedGameCleanup(game);
+const manager = new PersistentGameRegistry({
+  filePath: joinPath(config.stateStorageDir, "games.json"),
+  deliveryMode: config.gameDeliveryMode,
+  onEnded: (game: MafiaGame) => {
+    scheduleEndedGameCleanup(game);
+  },
 });
-const joinTicketService = new JoinTicketService(config.joinTicketSecret);
-const sessionStore = new InMemorySessionStore(config.webSessionSecret);
+const joinTicketService = new JoinTicketService(
+  config.joinTicketSecret,
+  new PersistentJoinTicketStore(joinPath(config.stateStorageDir, "join-tickets.json")),
+);
+const sessionStore: SessionStore = new PersistentSessionStore(
+  config.webSessionSecret,
+  joinPath(config.stateStorageDir, "sessions.json"),
+);
 const publicBaseUrlProvider =
   config.webMode === "quick_tunnel"
     ? new QuickTunnelProvider(config.webPort, config.quickTunnelEnabled)
@@ -51,6 +65,12 @@ const dashboardServer = new DashboardServer({
   secureCookies: config.secureCookies,
 });
 
+manager.getAllGames().forEach((game) => {
+  if (game.phase === "ended") {
+    scheduleEndedGameCleanup(game);
+  }
+});
+
 void dashboardServer.listen().then((port) => {
   console.log(`dashboard server listening on port ${port}`);
 }).catch((error) => {
@@ -59,6 +79,7 @@ void dashboardServer.listen().then((port) => {
 
 client.once(Events.ClientReady, async (readyClient) => {
   await registerCommands();
+  await manager.restoreActiveTimers(readyClient);
   console.log(`logged in as ${readyClient.user.tag}`);
 });
 

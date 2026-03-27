@@ -39,8 +39,9 @@ export class DashboardWsServer {
     }
 
     this.wss.handleUpgrade(request, socket, head, (ws) => {
-      (ws as any).gameId = gameId;
-      (ws as any).discordUserId = session.discordUserId;
+      (ws as ClientSocket).gameId = gameId;
+      (ws as ClientSocket).discordUserId = session.discordUserId;
+      (ws as ClientSocket).sessionId = session.id;
       this.wss.emit("connection", ws, request);
     });
   }
@@ -51,8 +52,13 @@ export class DashboardWsServer {
 
     this.wss.clients.forEach((client) => {
       if (client.readyState === WebSocket.OPEN) {
-        const clientGameId = (client as any).gameId;
-        const userId = (client as any).discordUserId;
+        const authorizedClient = this.getAuthorizedClient(client, gameId);
+        if (!authorizedClient) {
+          return;
+        }
+
+        const { userId } = authorizedClient;
+        const clientGameId = authorizedClient.gameId;
         if (clientGameId === gameId && userId) {
           try {
             const payload = buildDashboardState(game, userId);
@@ -64,4 +70,33 @@ export class DashboardWsServer {
       }
     });
   }
+
+  private getAuthorizedClient(client: WebSocket, expectedGameId: string): AuthorizedClient | null {
+    const socket = client as ClientSocket;
+    if (socket.gameId !== expectedGameId || !socket.discordUserId || !socket.sessionId) {
+      return null;
+    }
+
+    const session = this.options.sessionStore.get(socket.sessionId);
+    if (!session || session.gameId !== socket.gameId || session.discordUserId !== socket.discordUserId) {
+      client.close(4001, "session expired");
+      return null;
+    }
+
+    return {
+      gameId: socket.gameId,
+      userId: socket.discordUserId,
+    };
+  }
+}
+
+interface ClientSocket extends WebSocket {
+  gameId?: string;
+  discordUserId?: string;
+  sessionId?: string;
+}
+
+interface AuthorizedClient {
+  gameId: string;
+  userId: string;
 }

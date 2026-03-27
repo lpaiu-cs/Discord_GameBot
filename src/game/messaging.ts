@@ -252,8 +252,8 @@ export function buildTrialControls(gameId: string, token: number): ActionRowBuil
 
 export function buildTimeControls(gameId: string, token: number): ActionRowBuilder<ButtonBuilder> {
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
-    new ButtonBuilder().setCustomId(`time:${gameId}:${token}:cut`).setLabel("-15초").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`time:${gameId}:${token}:add`).setLabel("+15초").setStyle(ButtonStyle.Success),
+    new ButtonBuilder().setCustomId(`time:${gameId}:${token}:cut`).setLabel("-10초").setStyle(ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`time:${gameId}:${token}:add`).setLabel("+10초").setStyle(ButtonStyle.Success),
   );
 }
 

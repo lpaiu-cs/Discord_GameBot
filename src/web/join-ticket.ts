@@ -21,7 +21,7 @@ export interface JoinTicketStore {
 }
 
 export class InMemoryJoinTicketStore implements JoinTicketStore {
-  private readonly usedTicketIds = new Map<string, number>();
+  protected readonly usedTicketIds = new Map<string, number>();
 
   isUsed(jti: string): boolean {
     this.cleanup();
@@ -38,6 +38,17 @@ export class InMemoryJoinTicketStore implements JoinTicketStore {
       if (expiresAt <= now) {
         this.usedTicketIds.delete(jti);
       }
+    }
+  }
+
+  protected snapshotEntries(): Array<[string, number]> {
+    return [...this.usedTicketIds.entries()];
+  }
+
+  protected loadEntries(entries: Array<[string, number]>): void {
+    this.usedTicketIds.clear();
+    for (const [jti, expiresAt] of entries) {
+      this.usedTicketIds.set(jti, expiresAt);
     }
   }
 }

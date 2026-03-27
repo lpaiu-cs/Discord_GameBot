@@ -29,6 +29,10 @@
     "ts-morph": "^27.0.2",
     "ws": "^8.20.0"
   },
+  "overrides": {
+    "@discordjs/rest": "2.6.1",
+    "undici": "6.24.1"
+  },
   "devDependencies": {
     "@types/node": "^24.7.2",
     "@types/ws": "^8.18.1",

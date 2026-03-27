@@ -2,6 +2,7 @@ import "./dashboard-access.test";
 import "./dashboard-server.test";
 import "./game.test";
 import "./join-ticket.test";
+import "./persistent-storage.test";
 import "./public-base-url.test";
 import "./session-store.test";
 import "./web-practice.test";

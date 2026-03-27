@@ -140,7 +140,7 @@ export interface GameRegistry {
 }
 
 export class InMemoryGameRegistry implements GameRegistry {
-  private readonly games = new Map<string, MafiaGame>();
+  protected readonly games = new Map<string, MafiaGame>();
   public onGameStateChange?: (gameId: string) => void;
 
   constructor(public readonly onEnded?: (game: MafiaGame) => void) {}
@@ -172,7 +172,7 @@ export class InMemoryGameRegistry implements GameRegistry {
         }
       },
       config.gameDeliveryMode,
-      (g) => this.onGameStateChange?.(g.id),
+      (g) => this.handleGameStateChange(g),
     );
     this.games.set(guild.id, game);
     return game;
@@ -180,6 +180,10 @@ export class InMemoryGameRegistry implements GameRegistry {
 
   delete(guildId: string): void {
     this.games.delete(guildId);
+  }
+
+  protected handleGameStateChange(game: MafiaGame): void {
+    this.onGameStateChange?.(game.id);
   }
 }
 
@@ -1504,8 +1508,14 @@ export class MafiaGame {
 
   public buildTimeControls(): ActionRowBuilder<ButtonBuilder> {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`time:${this.id}:${this.phaseContext?.token ?? 0}:cut`).setLabel("-15초").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`time:${this.id}:${this.phaseContext?.token ?? 0}:add`).setLabel("+15초").setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId(`time:${this.id}:${this.phaseContext?.token ?? 0}:cut`)
+        .setLabel(`-${DISCUSSION_TIME_ADJUST_SECONDS}초`)
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId(`time:${this.id}:${this.phaseContext?.token ?? 0}:add`)
+        .setLabel(`+${DISCUSSION_TIME_ADJUST_SECONDS}초`)
+        .setStyle(ButtonStyle.Success),
     );
   }
 
