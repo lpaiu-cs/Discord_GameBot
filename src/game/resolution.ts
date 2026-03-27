@@ -280,6 +280,7 @@ export function applyGraverobber(game: MafiaGame, summary: ResolutionSummary, ma
     const stolenRole = victim.role;
     graverobber.role = stolenRole;
     victim.role = normalizeStolenRole(stolenRole, game.ruleset);
+    game.queueAudioCue("ghoul", [graverobber.userId]);
     summary.privateLines.push({
       userId: graverobber.userId,
       line: `도굴 성공: ${victim.displayName} 님의 직업 ${getRoleLabel(stolenRole)}를 얻었습니다.`,
@@ -332,4 +333,3 @@ export function getWinner(game: MafiaGame): string | null {
 
     return null;
   }
-

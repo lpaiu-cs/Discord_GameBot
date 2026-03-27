@@ -451,7 +451,7 @@ test("새 링크를 발급하면 이전 WebSocket 세션은 더 이상 상태를
   assert.equal(receivedMessage, false);
 });
 
-test("리소스 서버는 mp3 와 URL 인코딩된 오디오 파일명을 그대로 제공한다", async (t) => {
+test("리소스 서버는 새 mp3 오디오 파일들과 URL 인코딩된 파일명을 그대로 제공한다", async (t) => {
   const manager = new InMemoryGameRegistry();
   const joinTicketService = new JoinTicketService("join-secret");
   const sessionStore = new InMemorySessionStore("session-secret");
@@ -469,14 +469,18 @@ test("리소스 서버는 mp3 와 URL 인코딩된 오디오 파일명을 그대
   });
 
   const gunshots = await fetch(`http://127.0.0.1:${port}/resource/audio/gunshots.mp3`);
-  const doctorSave = await fetch(
-    `http://127.0.0.1:${port}/resource/audio/%EC%95%84%EB%B3%91%EC%9B%90%EC%9D%B4%EC%9A%94%EC%95%88%EC%8B%AC%ED%95%98%EC%84%B8%EC%9A%94.mp3`,
-  );
+  const doctor = await fetch(`http://127.0.0.1:${port}/resource/audio/doctor.mp3`);
+  const ending = await fetch(`http://127.0.0.1:${port}/resource/audio/ending.mp3`);
+  const encodedCamera = await fetch(`http://127.0.0.1:${port}/resource/audio/%63amera_shutter.mp3`);
 
   assert.equal(gunshots.status, 200);
   assert.equal(gunshots.headers.get("content-type"), "audio/mpeg");
-  assert.equal(doctorSave.status, 200);
-  assert.equal(doctorSave.headers.get("content-type"), "audio/mpeg");
+  assert.equal(doctor.status, 200);
+  assert.equal(doctor.headers.get("content-type"), "audio/mpeg");
+  assert.equal(ending.status, 200);
+  assert.equal(ending.headers.get("content-type"), "audio/mpeg");
+  assert.equal(encodedCamera.status, 200);
+  assert.equal(encodedCamera.headers.get("content-type"), "audio/mpeg");
 });
 
 test("클라이언트 자산 서버는 유효한 CSS 와 JS 모듈을 제공한다", async (t) => {

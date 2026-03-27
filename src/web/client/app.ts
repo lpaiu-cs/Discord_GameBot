@@ -81,6 +81,7 @@ document.addEventListener("submit", async (event) => {
     }
   } catch (error: any) {
     showToast(error.message || "요청 실패", "error");
+    AudioManager.playSfx(AUDIO_FILES.error);
   } finally {
     if (submitBtn) submitBtn.classList.remove("is-loading");
   }
@@ -190,6 +191,7 @@ document.addEventListener("click", async (event) => {
     await refreshState();
   } catch (error: any) {
     showToast(error.message || "요청 실패", "error");
+    AudioManager.playSfx(AUDIO_FILES.error);
   }
 });
 

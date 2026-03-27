@@ -111,6 +111,7 @@ export type AudioCueKey =
   | "beast_howling"
   | "camera_shutter"
   | "explosion"
+  | "ghoul"
   | "gunshots"
   | "revive"
   | "doctor_save"

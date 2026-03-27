@@ -56,18 +56,20 @@ function formatDeadline(timestamp?: number | null): string {
 export const AUDIO_FILES: Record<string, string> = {
   bgm_day: "/resource/audio/bgm_day.mp3",
   bgm_night: "/resource/audio/bgm_night.mp3",
-  bgm_vote: "/resource/audio/bgm_vote.wav",
-  fanfare: "/resource/audio/fanfare.wav",
-  click: "/resource/audio/click.wav",
-  action: "/resource/audio/action.wav",
+  bgm_vote: "/resource/audio/bgm_vote.mp3",
+  ending: "/resource/audio/ending.mp3",
+  click: "/resource/audio/click.mp3",
+  action: "/resource/audio/action.mp3",
+  error: "/resource/audio/error.mp3",
   tick: "/resource/audio/tick.wav",
   beast_howling: "/resource/audio/beast_howling.mp3",
   camera_shutter: "/resource/audio/camera_shutter.mp3",
   charm: "/resource/audio/charm.mp3",
-  doctor_save: "/resource/audio/%EC%95%84%EB%B3%91%EC%9B%90%EC%9D%B4%EC%9A%94%EC%95%88%EC%8B%AC%ED%95%98%EC%84%B8%EC%9A%94.mp3",
+  doctor_save: "/resource/audio/doctor.mp3",
   door: "/resource/audio/door.mp3",
   explosion: "/resource/audio/explosion.mp3",
   gavel: "/resource/audio/gavel.mp3",
+  ghoul: "/resource/audio/ghoul.mp3",
   gunshots: "/resource/audio/gunshots.mp3",
   magical: "/resource/audio/magical.mp3",
   punch: "/resource/audio/punch.mp3",
@@ -200,7 +202,7 @@ function playNewAudioCues(state: GameState, options: { phaseChanged?: boolean } 
 function bgmForPhase(phase: string) {
   if (phase === "night") return AUDIO_FILES.bgm_night;
   if (phase === "vote" || phase === "trial" || phase === "defense") return AUDIO_FILES.bgm_vote;
-  if (phase === "ended") return AUDIO_FILES.fanfare;
+  if (phase === "ended") return AUDIO_FILES.ending;
   return AUDIO_FILES.bgm_day;
 }
 
