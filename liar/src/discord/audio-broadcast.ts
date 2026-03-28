@@ -24,6 +24,8 @@ const PCM_CHANNELS = 2;
 const PCM_BYTES_PER_SAMPLE = 2;
 const PCM_FRAME_MS = 20;
 const PCM_CHUNK_SIZE = (PCM_SAMPLE_RATE * PCM_CHANNELS * PCM_BYTES_PER_SAMPLE * PCM_FRAME_MS) / 1_000;
+const READY_REPLAY_DELAY_MS = 150;
+const INITIAL_READY_REPLAY_DELAY_MS = 2_000;
 
 type LoopTrackKey = "lobby" | "discussion" | "guess";
 type OverlayTrackKey = "join" | "start" | "turn";
@@ -55,6 +57,8 @@ interface BroadcastSession {
   resultSource: PcmSource | null;
   destroyAfterResult: boolean;
   pendingReadyReplay: NodeJS.Timeout | null;
+  subscribed: boolean;
+  initialWarmupDone: boolean;
 }
 
 interface VoiceStateDebugInfo {
@@ -86,6 +90,17 @@ const TRACK_FILES: Record<TrackKey, string> = {
   turn: "sfx_turn.mp3",
   citizensWin: "bgm_citizen_win.mp3",
   liarWin: "bgm_liar_win.mp3",
+};
+
+const TRACK_GAINS: Record<TrackKey, number> = {
+  lobby: 0.6,
+  discussion: 0.6,
+  guess: 0.6,
+  citizensWin: 0.6,
+  liarWin: 0.6,
+  join: 0.8,
+  start: 0.8,
+  turn: 0.8,
 };
 
 const AUDIO_ROOT_CANDIDATES = [
@@ -299,10 +314,11 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       resultSource: null,
       destroyAfterResult: false,
       pendingReadyReplay: null,
+      subscribed: false,
+      initialWarmupDone: false,
     };
 
     this.debug(session.guildId, `join voice channel=${channelId}`);
-    connection.subscribe(player);
     connection.on("debug", (message: string) => {
       this.debug(session.guildId, `voice-debug ${message}`);
     });
@@ -312,8 +328,10 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
         session.guildId,
         `voice ${this.formatVoiceState(oldState)} -> ${this.formatVoiceState(newState)}`,
       );
-      if (newState.status === VoiceConnectionStatus.Ready) {
-        this.scheduleReadyReplay(session);
+      if (newState.status === VoiceConnectionStatus.Ready && oldState.status !== VoiceConnectionStatus.Ready) {
+        const delayMs = session.initialWarmupDone ? READY_REPLAY_DELAY_MS : INITIAL_READY_REPLAY_DELAY_MS;
+        session.initialWarmupDone = true;
+        this.scheduleReadyReplay(session, delayMs);
       }
       if (newState.status === VoiceConnectionStatus.Disconnected) {
         console.warn(`liar voice connection disconnected in guild ${guild.id}`);
@@ -378,8 +396,8 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     session.mixer.bgmSource = bgmKey ? this.createPcmSource(bgmKey) : null;
   }
 
-  private scheduleReadyReplay(session: BroadcastSession): void {
-    this.debug(session.guildId, `schedule ready replay status=${session.connection.state.status}`);
+  private scheduleReadyReplay(session: BroadcastSession, delayMs = READY_REPLAY_DELAY_MS): void {
+    this.debug(session.guildId, `schedule ready replay status=${session.connection.state.status} delay=${delayMs}`);
     if (session.pendingReadyReplay) {
       clearTimeout(session.pendingReadyReplay);
     }
@@ -387,7 +405,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     session.pendingReadyReplay = setTimeout(() => {
       session.pendingReadyReplay = null;
       void this.replayCurrentAudio(session.guildId);
-    }, 150);
+    }, delayMs);
     session.pendingReadyReplay.unref?.();
   }
 
@@ -417,6 +435,8 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       this.debug(guildId, "replay skipped because connection was not ready in time");
       return;
     }
+
+    this.ensureSubscribed(session);
 
     if (session.resultSource) {
       const resultKey = session.resultSource.key as ResultTrackKey;
@@ -468,7 +488,18 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     const resource = createAudioResource(source.process.stdout, {
       inputType: StreamType.Raw,
     });
+    this.ensureSubscribed(session);
     session.player.play(resource);
+  }
+
+  private ensureSubscribed(session: BroadcastSession): void {
+    if (session.subscribed) {
+      return;
+    }
+
+    session.connection.subscribe(session.player);
+    session.subscribed = true;
+    this.debug(session.guildId, "subscribed player after ready warmup");
   }
 
   private enqueueOverlay(session: BroadcastSession, key: OverlayTrackKey): void {
@@ -544,7 +575,8 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
   private createPcmSource(key: TrackKey): PcmSource {
     const executable = ffmpegPath ?? "ffmpeg";
     const filePath = resolveAudioPath(TRACK_FILES[key]);
-    this.debug("global", `spawn ffmpeg track=${key} file=${filePath}`);
+    const gain = TRACK_GAINS[key];
+    this.debug("global", `spawn ffmpeg track=${key} gain=${gain} file=${filePath}`);
     const process = spawn(
       executable,
       [
@@ -553,6 +585,8 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
         "error",
         "-i",
         filePath,
+        "-filter:a",
+        `volume=${gain}`,
         "-f",
         "s16le",
         "-ar",
