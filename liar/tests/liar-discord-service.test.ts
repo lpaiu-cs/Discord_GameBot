@@ -474,6 +474,44 @@ test("/liar create 는 새 로비 임베드 상태 메시지를 띄운다", asyn
   assert.ok(channel.sent.some((payload) => payload.embeds?.[0]?.data?.title === "라이어게임 로비"));
 });
 
+test("/liar create 는 오디오 연결이 실패해도 로비 임베드를 계속 띄운다", async () => {
+  const service = new LiarDiscordService({
+    audioController: {
+      async syncPhase() {
+        throw new Error("audio unavailable");
+      },
+      async playLobbyJoin() {},
+      async playGameStart() {},
+      async playTurnCue() {},
+      async destroy() {},
+    } as any,
+  });
+  const channel = createFakeChannel();
+  const client = { channels: { fetch: async () => channel } } as any;
+  const { interaction, replies } = createFakeCommandInteraction("liar", {
+    guildId: "guild-1",
+    guild: {
+      id: "guild-1",
+      name: "테스트 길드",
+      members: {
+        fetch: async () => ({ displayName: "방장", voice: { channelId: "voice-1" } }),
+      },
+    },
+    channelId: "channel-1",
+    channel,
+    options: {
+      getSubcommand: () => "create",
+      getUser: () => null,
+    },
+  });
+
+  const handled = await service.handleCommand(client, interaction as any);
+
+  assert.equal(handled, true);
+  assert.equal(replies.length, 1);
+  assert.ok(channel.sent.some((payload) => payload.embeds?.[0]?.data?.title === "라이어게임 로비"));
+});
+
 test("로비 참가 시 공용 입장 효과음이 요청된다", async () => {
   const audio = createFakeAudioController();
   const service = new LiarDiscordService({

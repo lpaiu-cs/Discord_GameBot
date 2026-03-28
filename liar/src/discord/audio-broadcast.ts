@@ -11,7 +11,6 @@ import {
   VoiceConnectionStatus,
   createAudioPlayer,
   createAudioResource,
-  entersState,
   joinVoiceChannel,
 } from "@discordjs/voice";
 import { Client, Guild } from "discord.js";
@@ -270,8 +269,12 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       selfDeaf: true,
     });
 
-    await entersState(connection, VoiceConnectionStatus.Ready, 20_000);
     connection.subscribe(player);
+    connection.on("stateChange", (_oldState, newState) => {
+      if (newState.status === VoiceConnectionStatus.Disconnected) {
+        console.warn(`liar voice connection disconnected in guild ${guild.id}`);
+      }
+    });
 
     const session: BroadcastSession = {
       guildId: guild.id,

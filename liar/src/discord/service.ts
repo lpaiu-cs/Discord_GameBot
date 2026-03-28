@@ -146,9 +146,10 @@ export class LiarDiscordService {
       throw new Error("이 서버에는 이미 라이어게임이 진행 중입니다.");
     }
 
-    if (game?.phase === "ended") {
-      this.clearGameRuntimeState(game.id);
-      await this.audioController.destroy(game.guildId);
+    const endedGame = game?.phase === "ended" ? game : null;
+    if (endedGame) {
+      this.clearGameRuntimeState(endedGame.id);
+      await this.safelyRunAudio(() => this.audioController.destroy(endedGame.guildId), endedGame.guildId);
       this.registry.delete(interaction.guildId);
     }
 
@@ -175,9 +176,10 @@ export class LiarDiscordService {
       await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild, hostVoiceChannelId);
       return true;
     } catch (error) {
-      if (createdGame && this.registry.get(interaction.guildId)?.id === createdGame.id) {
-        this.clearGameRuntimeState(createdGame.id);
-        await this.audioController.destroy(createdGame.guildId);
+      const failedGame = createdGame;
+      if (failedGame && this.registry.get(interaction.guildId)?.id === failedGame.id) {
+        this.clearGameRuntimeState(failedGame.id);
+        await this.safelyRunAudio(() => this.audioController.destroy(failedGame.guildId), failedGame.guildId);
         this.registry.delete(interaction.guildId);
       }
 
@@ -205,9 +207,13 @@ export class LiarDiscordService {
         await this.syncSeenUser(game.guildId, game.guildName, interaction.user.id, member.displayName);
         await this.replyEphemeral(interaction, "라이어게임에 참가했습니다.");
         await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
-        await this.audioController.playLobbyJoin(client, game, {
-          guild: interaction.guild,
-        });
+        await this.safelyRunAudio(
+          () =>
+            this.audioController.playLobbyJoin(client, game, {
+              guild: interaction.guild,
+            }),
+          game.guildId,
+        );
         return true;
       }
       case "leave": {
@@ -253,12 +259,20 @@ export class LiarDiscordService {
         }
         await this.replyEphemeral(interaction, "라이어게임을 시작했습니다. 각 참가자는 `/제시어` 를 확인하세요.");
         await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
-        await this.audioController.playGameStart(client, game, {
-          guild: interaction.guild,
-        });
-        await this.audioController.playTurnCue(client, game, {
-          guild: interaction.guild,
-        });
+        await this.safelyRunAudio(
+          () =>
+            this.audioController.playGameStart(client, game, {
+              guild: interaction.guild,
+            }),
+          game.guildId,
+        );
+        await this.safelyRunAudio(
+          () =>
+            this.audioController.playTurnCue(client, game, {
+              guild: interaction.guild,
+            }),
+          game.guildId,
+        );
         await this.sendPublicMessage(
           client,
           game,
@@ -375,9 +389,13 @@ export class LiarDiscordService {
       return false;
     }
 
-    await this.audioController.syncPhase(client, game, {
-      hostVoiceChannelId: channelId,
-    });
+    await this.safelyRunAudio(
+      () =>
+        this.audioController.syncPhase(client, game, {
+          hostVoiceChannelId: channelId,
+        }),
+      game.guildId,
+    );
     return true;
   }
 
@@ -437,7 +455,7 @@ export class LiarDiscordService {
         );
       } else {
         const nextSpeaker = result.nextSpeakerId ? game.getPlayer(result.nextSpeakerId) : null;
-        await this.audioController.playTurnCue(client, game);
+        await this.safelyRunAudio(() => this.audioController.playTurnCue(client, game), game.guildId);
         await this.sendPublicMessage(client, game, `다음 차례는 ${nextSpeaker?.displayName ?? "알 수 없음"} 님입니다.`, message.channel);
       }
       return true;
@@ -686,10 +704,14 @@ export class LiarDiscordService {
       await this.persistEndedGame(game);
     }
     this.schedulePhaseAutomation(client, game);
-    await this.audioController.syncPhase(client, game, {
-      guild: preferredGuild,
-      hostVoiceChannelId: preferredHostVoiceChannelId,
-    });
+    await this.safelyRunAudio(
+      () =>
+        this.audioController.syncPhase(client, game, {
+          guild: preferredGuild,
+          hostVoiceChannelId: preferredHostVoiceChannelId,
+        }),
+      game.guildId,
+    );
     await this.syncStatusMessage(client, game, preferredChannel);
 
     if (shouldDeleteAfterSync && this.registry.get(game.guildId)?.id === game.id) {
@@ -799,7 +821,7 @@ export class LiarDiscordService {
         }
 
         const nextSpeaker = skipped.nextSpeakerId ? game.getPlayer(skipped.nextSpeakerId) : null;
-        await this.audioController.playTurnCue(client, game);
+        await this.safelyRunAudio(() => this.audioController.playTurnCue(client, game), game.guildId);
         await this.sendPublicMessage(
           client,
           game,
@@ -1302,6 +1324,14 @@ export class LiarDiscordService {
       discordGuildId: guildId,
       guildName,
     });
+  }
+
+  private async safelyRunAudio(task: () => Promise<void>, guildId: string): Promise<void> {
+    try {
+      await task();
+    } catch (error) {
+      console.error(`liar audio operation failed in guild ${guildId}`, error);
+    }
   }
 
   private async persistEndedGame(game: LiarGame): Promise<void> {
