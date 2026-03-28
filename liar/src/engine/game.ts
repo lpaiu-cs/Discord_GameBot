@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { getDefaultLiarCategory, getLiarCategory, LiarCategory } from "../content/categories";
+import { getDefaultLiarCategory, getLiarCategories, getLiarCategory, LiarCategory } from "../content/categories";
 import {
   LiarClue,
   LiarClueSubmissionResult,
@@ -20,6 +20,16 @@ const MAX_CLUE_LENGTH = 120;
 const MAX_GUESS_LENGTH = 60;
 
 type RandomSource = () => number;
+
+interface KeywordAssignment {
+  readonly category: LiarCategory;
+  readonly word: string;
+}
+
+interface ModeBCandidate {
+  readonly citizen: KeywordAssignment;
+  readonly liarAssignments: readonly KeywordAssignment[];
+}
 
 function normalizeWord(value: string): string {
   return value.trim().toLowerCase().replace(/\s+/g, "");
@@ -69,6 +79,8 @@ export class LiarGame {
   statusMessageId: string | null = null;
   liarId: string | null = null;
   secretWord: string | null = null;
+  liarAssignedCategoryId: string | null = null;
+  liarAssignedCategoryLabel: string | null = null;
   liarAssignedWord: string | null = null;
   turnOrder: string[] = [];
   currentTurnIndex = 0;
@@ -196,19 +208,21 @@ export class LiarGame {
   }
 
   getStartConfigurationError(): string | null {
-    if (this.mode !== "modeB") {
+    if (this.mode === "modeA") {
       return null;
     }
 
-    const distinctWords = new Set(this.category.words.map((word) => normalizeWord(word)));
-    if (distinctWords.size < 2) {
-      return "모드B 는 현재 카테고리에 서로 다른 제시어가 최소 2개 이상 있어야 시작할 수 있습니다.";
+    if (this.buildModeBCandidates(new Map()).length === 0) {
+      return "모드B 는 시민 카테고리와 다른 카테고리의 제시어를 함께 뽑을 수 있을 때만 시작할 수 있습니다.";
     }
 
     return null;
   }
 
-  start(random: RandomSource = Math.random, options: { excludedWords?: readonly string[] } = {}): void {
+  start(
+    random: RandomSource = Math.random,
+    options: { excludedWords?: readonly string[]; excludedWordsByCategoryId?: ReadonlyMap<string, readonly string[]> } = {},
+  ): void {
     if (this.phase !== "lobby") {
       throw new Error("이미 시작된 게임입니다.");
     }
@@ -224,14 +238,36 @@ export class LiarGame {
 
     const participants = [...this.players.values()].sort((left, right) => left.joinedAt - right.joinedAt);
     const liarIndex = Math.floor(random() * participants.length);
-    const excludedWords = new Set((options.excludedWords ?? []).map((word) => normalizeWord(word)));
-    const candidateWords = this.category.words.filter((word) => !excludedWords.has(normalizeWord(word)));
-    const wordPool = candidateWords.length > 0 ? candidateWords : [...this.category.words];
-    const keywordIndex = Math.floor(random() * wordPool.length);
-    const secretWord = wordPool[keywordIndex];
+    const excludedWordsByCategoryId = options.excludedWordsByCategoryId ?? new Map<string, readonly string[]>();
+    let secretAssignment: KeywordAssignment;
+    let liarAssignment: KeywordAssignment | null = null;
+
+    if (this.mode === "modeB") {
+      const modeBCandidates = this.buildModeBCandidates(excludedWordsByCategoryId);
+      if (modeBCandidates.length === 0) {
+        throw new Error("모드B 를 시작할 수 있는 크로스 카테고리 제시어 조합이 없습니다.");
+      }
+
+      const selectedCandidate = modeBCandidates[Math.floor(random() * modeBCandidates.length)];
+      secretAssignment = selectedCandidate.citizen;
+      liarAssignment = selectedCandidate.liarAssignments[Math.floor(random() * selectedCandidate.liarAssignments.length)];
+      this.categoryId = secretAssignment.category.id;
+      this.liarAssignedCategoryId = liarAssignment.category.id;
+      this.liarAssignedCategoryLabel = liarAssignment.category.label;
+      this.liarAssignedWord = liarAssignment.word;
+    } else {
+      secretAssignment = this.pickWordAssignment(
+        this.category,
+        this.getExcludedWordsForCategory(this.category.id, options.excludedWords, excludedWordsByCategoryId),
+        random,
+      );
+      this.liarAssignedCategoryId = null;
+      this.liarAssignedCategoryLabel = null;
+      this.liarAssignedWord = null;
+    }
+
     this.liarId = participants[liarIndex].userId;
-    this.secretWord = secretWord;
-    this.liarAssignedWord = this.mode === "modeB" ? this.pickLiarAssignedWord(secretWord, random) : null;
+    this.secretWord = secretAssignment.word;
     this.turnOrder = shuffle(participants.map((player) => player.userId), random);
     this.phase = "clue";
     this.currentTurnIndex = 0;
@@ -257,11 +293,11 @@ export class LiarGame {
       if (this.mode === "modeB" && this.liarAssignedWord) {
         return {
           mode: this.mode,
-          categoryLabel: this.category.label,
+          categoryLabel: this.liarAssignedCategoryLabel ?? this.category.label,
           isLiar: true,
           knowsLiarRole: false,
           keyword: this.liarAssignedWord,
-          message: `카테고리: ${this.category.label}\n제시어: ${this.liarAssignedWord}`,
+          message: `카테고리: ${this.liarAssignedCategoryLabel ?? this.category.label}\n제시어: ${this.liarAssignedWord}`,
         };
       }
 
@@ -514,7 +550,7 @@ export class LiarGame {
     const header = [
       `라이어게임 상태: ${phaseLabel(this.phase)}`,
       `규칙 모드: ${liarModeLabel(this.mode)}`,
-      `카테고리: ${this.category.label}`,
+      `카테고리: ${this.describePublicCategory()}`,
       `참가자(${this.players.size}명): ${this.describeParticipants() || "없음"}`,
     ];
 
@@ -619,14 +655,79 @@ export class LiarGame {
     };
   }
 
-  private pickLiarAssignedWord(secretWord: string, random: RandomSource): string {
-    const decoyPool = this.category.words.filter((word) => normalizeWord(word) !== normalizeWord(secretWord));
-    if (decoyPool.length === 0) {
-      throw new Error("모드B 를 시작하려면 카테고리에 서로 다른 제시어가 최소 2개 이상 있어야 합니다.");
+  describePublicCategory(): string {
+    if (this.mode === "modeB") {
+      if (this.phase === "lobby") {
+        return "크로스 카테고리 (시작 시 자동 배정)";
+      }
+
+      if (this.phase === "ended") {
+        const liarCategory = this.liarAssignedCategoryLabel ? ` · 라이어 ${this.liarAssignedCategoryLabel}` : "";
+        return `시민 ${this.category.label}${liarCategory}`;
+      }
+
+      return "비공개 (각자 /제시어 확인)";
     }
 
-    const decoyIndex = Math.floor(random() * decoyPool.length);
-    return decoyPool[decoyIndex];
+    return this.category.label;
+  }
+
+  private buildModeBCandidates(excludedWordsByCategoryId: ReadonlyMap<string, readonly string[]>): ModeBCandidate[] {
+    const categories = getLiarCategories(this.guildId);
+    const candidates: ModeBCandidate[] = [];
+
+    for (const citizenCategory of categories) {
+      const citizenWordPool = this.getWordPool(citizenCategory, this.getExcludedWordsForCategory(citizenCategory.id, [], excludedWordsByCategoryId));
+      for (const citizenWord of citizenWordPool) {
+        const liarAssignments = categories
+          .filter((category) => category.id !== citizenCategory.id)
+          .flatMap((category) =>
+            this.getWordPool(category, this.getExcludedWordsForCategory(category.id, [], excludedWordsByCategoryId))
+              .filter((word) => normalizeWord(word) !== normalizeWord(citizenWord))
+              .map((word) => ({
+                category,
+                word,
+              })),
+          );
+
+        if (liarAssignments.length === 0) {
+          continue;
+        }
+
+        candidates.push({
+          citizen: {
+            category: citizenCategory,
+            word: citizenWord,
+          },
+          liarAssignments,
+        });
+      }
+    }
+
+    return candidates;
+  }
+
+  private getExcludedWordsForCategory(
+    categoryId: string,
+    fallbackWords: readonly string[] = [],
+    excludedWordsByCategoryId: ReadonlyMap<string, readonly string[]>,
+  ): readonly string[] {
+    return excludedWordsByCategoryId.get(categoryId) ?? fallbackWords;
+  }
+
+  private pickWordAssignment(category: LiarCategory, excludedWords: readonly string[], random: RandomSource): KeywordAssignment {
+    const wordPool = this.getWordPool(category, excludedWords);
+    const keywordIndex = Math.floor(random() * wordPool.length);
+    return {
+      category,
+      word: wordPool[keywordIndex],
+    };
+  }
+
+  private getWordPool(category: LiarCategory, excludedWords: readonly string[]): readonly string[] {
+    const excludedWordSet = new Set(excludedWords.map((word) => normalizeWord(word)));
+    const candidateWords = category.words.filter((word) => !excludedWordSet.has(normalizeWord(word)));
+    return candidateWords.length > 0 ? candidateWords : [...category.words];
   }
 }
 

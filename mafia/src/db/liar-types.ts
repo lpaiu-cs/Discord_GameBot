@@ -23,6 +23,8 @@ export interface RecordedLiarMatch {
   categoryId: string;
   categoryLabel: string;
   secretWord: string | null;
+  liarAssignedCategoryId: string | null;
+  liarAssignedCategoryLabel: string | null;
   liarAssignedWord: string | null;
   status: RecordedLiarMatchStatus;
   winner: RecordedLiarWinner;

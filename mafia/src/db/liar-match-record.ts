@@ -29,6 +29,8 @@ export function buildRecordedLiarMatch(game: LiarGame): RecordedLiarMatch {
     categoryId: game.categoryId,
     categoryLabel: game.category.label,
     secretWord: game.secretWord,
+    liarAssignedCategoryId: game.liarAssignedCategoryId,
+    liarAssignedCategoryLabel: game.liarAssignedCategoryLabel,
     liarAssignedWord: game.liarAssignedWord,
     status,
     winner,

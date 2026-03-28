@@ -53,7 +53,7 @@ test("모드A 에서는 라이어가 자신이 라이어인 것을 알고 제시
   assert.equal(citizenView.keyword, "김치찌개");
 });
 
-test("모드B 에서는 라이어가 오답 제시어를 받고 자신이 라이어인지 모른다", () => {
+test("모드B 에서는 라이어가 다른 카테고리의 오답 제시어를 받고 자신이 라이어인지 모른다", () => {
   const game = new LiarGame({
     guildId: "guild-1",
     guildName: "테스트 길드",
@@ -74,9 +74,12 @@ test("모드B 에서는 라이어가 오답 제시어를 받고 자신이 라이
   assert.equal(liarView.isLiar, true);
   assert.equal(liarView.mode, "modeB");
   assert.equal(liarView.knowsLiarRole, false);
-  assert.equal(liarView.keyword, "비빔밥");
+  assert.equal(liarView.categoryLabel, "동물");
+  assert.equal(liarView.keyword, "호랑이");
   assert.doesNotMatch(liarView.message, /당신은 라이어입니다/);
+  assert.equal(citizenView.categoryLabel, "음식");
   assert.equal(citizenView.keyword, "김치찌개");
+  assert.equal(game.describePublicCategory(), "비공개 (각자 /제시어 확인)");
 });
 
 test("최근 사용 제시어는 다음 시작에서 우선 제외할 수 있다", () => {

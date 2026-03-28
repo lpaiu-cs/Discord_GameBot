@@ -685,6 +685,8 @@ async function upsertLiarMatch(client: PoolClient, record: RecordedLiarMatch): P
         category_id,
         category_label,
         secret_word,
+        liar_assigned_category_id,
+        liar_assigned_category_label,
         liar_assigned_word,
         status,
         winner,
@@ -696,13 +698,15 @@ async function upsertLiarMatch(client: PoolClient, record: RecordedLiarMatch): P
         started_at,
         ended_at
       )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18)
       on conflict (external_game_id) do update
       set discord_guild_id = excluded.discord_guild_id,
           mode = excluded.mode,
           category_id = excluded.category_id,
           category_label = excluded.category_label,
           secret_word = excluded.secret_word,
+          liar_assigned_category_id = excluded.liar_assigned_category_id,
+          liar_assigned_category_label = excluded.liar_assigned_category_label,
           liar_assigned_word = excluded.liar_assigned_word,
           status = excluded.status,
           winner = excluded.winner,
@@ -722,6 +726,8 @@ async function upsertLiarMatch(client: PoolClient, record: RecordedLiarMatch): P
       record.categoryId,
       record.categoryLabel,
       record.secretWord,
+      record.liarAssignedCategoryId,
+      record.liarAssignedCategoryLabel,
       record.liarAssignedWord,
       record.status,
       record.winner,

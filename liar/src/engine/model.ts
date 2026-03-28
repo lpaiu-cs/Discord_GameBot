@@ -68,7 +68,7 @@ export function liarModeSummary(mode: LiarMode): string {
     case "modeA":
       return "라이어 공개형: 라이어는 자신이 라이어임을 알고 제시어를 받지 않습니다.";
     case "modeB":
-      return "오답 제시어형: 라이어는 자신이 라이어인지 모른 채 혼자 다른 제시어를 받습니다.";
+      return "크로스 카테고리형: 라이어는 자신이 라이어인지 모른 채 다른 카테고리의 제시어를 받습니다.";
     default:
       return mode;
   }

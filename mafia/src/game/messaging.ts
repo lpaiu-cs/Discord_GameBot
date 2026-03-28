@@ -227,6 +227,7 @@ export function buildLobbyControls(gameId: string): ActionRowBuilder<ButtonBuild
     new ButtonBuilder().setCustomId(`lobby:${gameId}:join`).setLabel("참가").setStyle(ButtonStyle.Success),
     new ButtonBuilder().setCustomId(`lobby:${gameId}:leave`).setLabel("나가기").setStyle(ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`lobby:${gameId}:start`).setLabel("시작").setStyle(ButtonStyle.Primary),
+    new ButtonBuilder().setCustomId(`lobby:${gameId}:end`).setLabel("종료").setStyle(ButtonStyle.Danger),
   );
 }
 

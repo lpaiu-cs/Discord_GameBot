@@ -95,6 +95,30 @@ test("역할 카드 설명은 현재 엔진 동작과 맞아야 한다", () => {
   assert.match(getRoleSummary("priest", "balance"), /밤에 죽은 플레이어 한 명을 부활/);
 });
 
+test("마피아 로비 컨트롤에는 종료 버튼이 있고 시작 버튼은 4인 이상에서만 열린다", () => {
+  const game = createTestGame("balance");
+  seedPlayers(game, [{ userId: "host", displayName: "host", role: "citizen" }]);
+
+  const controlsBefore = game.buildLobbyControls().components.map((component) => component.data);
+  const startBefore = controlsBefore.find((component) => component.custom_id === `lobby:${game.id}:start`);
+  const endButton = controlsBefore.find((component) => component.custom_id === `lobby:${game.id}:end`);
+
+  assert.equal(startBefore?.disabled, true);
+  assert.equal(endButton?.style, 4);
+
+  seedPlayers(game, [
+    { userId: "host", displayName: "host", role: "citizen" },
+    { userId: "p1", displayName: "p1", role: "doctor" },
+    { userId: "p2", displayName: "p2", role: "police" },
+    { userId: "p3", displayName: "p3", role: "reporter" },
+  ]);
+
+  const controlsAfter = game.buildLobbyControls().components.map((component) => component.data);
+  const startAfter = controlsAfter.find((component) => component.custom_id === `lobby:${game.id}:start`);
+
+  assert.equal(startAfter?.disabled, false);
+});
+
 test("승리 조건은 정치인 표 가중치와 무관하게 머릿수로만 계산한다", () => {
   const game = createTestGame("balance");
   seedPlayers(game, [

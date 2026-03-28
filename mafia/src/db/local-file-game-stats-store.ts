@@ -297,6 +297,9 @@ function deserializeRecordedLiarMatch(raw: unknown): RecordedLiarMatch {
   };
   return {
     ...value,
+    liarAssignedCategoryId: value.liarAssignedCategoryId ?? null,
+    liarAssignedCategoryLabel: value.liarAssignedCategoryLabel ?? null,
+    liarAssignedWord: value.liarAssignedWord ?? null,
     createdAt: new Date(value.createdAt),
     startedAt: value.startedAt ? new Date(value.startedAt) : null,
     endedAt: new Date(value.endedAt),

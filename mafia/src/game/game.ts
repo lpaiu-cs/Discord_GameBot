@@ -535,6 +535,10 @@ export class MafiaGame {
     this.phase = "night";
     // this.setPublicLines(["게임이 시작되었습니다.", `시즌4 ${this.ruleset === "balance" ? "밸런스" : "초기"} 규칙으로 진행합니다.`]);
     this.setPublicLines(["게임이 시작되었습니다.", "시즌4 밸런스 규칙으로 진행합니다."]);
+    if (this.lobbyMessageId && !this.statusMessageId) {
+      this.statusMessageId = this.lobbyMessageId;
+      this.lobbyMessageId = null;
+    }
     await this.sendOrUpdateStatus(client);
     await this.beginNight(client);
   }
@@ -562,6 +566,7 @@ export class MafiaGame {
   }
 
   async end(client: Client, reason: string): Promise<void> {
+    const wasLobby = this.phase === "lobby";
     this.clearTimer();
     this.phase = "ended";
     this.phaseContext = null;
@@ -569,6 +574,10 @@ export class MafiaGame {
     this.endedReason = reason;
     this.endedAt = Date.now();
     this.setPublicLines([reason]);
+    if (wasLobby && this.lobbyMessageId && !this.statusMessageId) {
+      this.statusMessageId = this.lobbyMessageId;
+      this.lobbyMessageId = null;
+    }
     await this.sendOrUpdateStatus(client);
     await this.lockOrDeleteSecretChannels(client);
     this.onEnded(this.guildId);
@@ -1484,9 +1493,10 @@ export class MafiaGame {
 
   public buildLobbyControls(): ActionRowBuilder<ButtonBuilder> {
     return new ActionRowBuilder<ButtonBuilder>().addComponents(
-      new ButtonBuilder().setCustomId(`lobby:${this.id}:join`).setLabel("참가").setStyle(ButtonStyle.Success),
+      new ButtonBuilder().setCustomId(`lobby:${this.id}:join`).setLabel("참가").setStyle(ButtonStyle.Success).setDisabled(this.players.size >= 8),
       new ButtonBuilder().setCustomId(`lobby:${this.id}:leave`).setLabel("나가기").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId(`lobby:${this.id}:start`).setLabel("시작").setStyle(ButtonStyle.Primary),
+      new ButtonBuilder().setCustomId(`lobby:${this.id}:start`).setLabel("시작").setStyle(ButtonStyle.Primary).setDisabled(this.players.size < 4),
+      new ButtonBuilder().setCustomId(`lobby:${this.id}:end`).setLabel("종료").setStyle(ButtonStyle.Danger),
     );
   }
 

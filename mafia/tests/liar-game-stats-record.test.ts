@@ -95,5 +95,7 @@ test("modeB record 는 라이어에게 주어진 오답 제시어도 남긴다",
 
   assert.equal(record.mode, "modeB");
   assert.equal(record.secretWord, "김치찌개");
-  assert.equal(record.liarAssignedWord, "비빔밥");
+  assert.equal(record.liarAssignedCategoryId, "animal");
+  assert.equal(record.liarAssignedCategoryLabel, "동물");
+  assert.equal(record.liarAssignedWord, "호랑이");
 });

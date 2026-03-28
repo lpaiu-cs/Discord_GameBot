@@ -92,6 +92,8 @@ create table if not exists liar_matches (
   category_id text not null,
   category_label text not null,
   secret_word text,
+  liar_assigned_category_id text,
+  liar_assigned_category_label text,
   liar_assigned_word text,
   status text not null check (status in ('completed', 'cancelled')),
   winner text check (winner in ('liar', 'citizens')),
@@ -136,6 +138,8 @@ alter table liar_matches alter column mode set default 'modeA';
 alter table liar_matches alter column mode set not null;
 alter table liar_matches drop constraint if exists liar_matches_mode_check;
 alter table liar_matches add constraint liar_matches_mode_check check (mode in ('modeA', 'modeB'));
+alter table liar_matches add column if not exists liar_assigned_category_id text;
+alter table liar_matches add column if not exists liar_assigned_category_label text;
 alter table liar_matches add column if not exists liar_assigned_word text;
 
 create index if not exists idx_matches_guild_ended_at on matches (discord_guild_id, ended_at desc);

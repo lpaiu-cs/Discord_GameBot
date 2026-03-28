@@ -210,7 +210,7 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
   }
 
   if (kind === "lobby") {
-    await handleLobbyButton(interaction, gameId, tokenOrAction as "join" | "leave" | "start");
+    await handleLobbyButton(interaction, gameId, tokenOrAction as "join" | "leave" | "start" | "end");
     return;
   }
 
@@ -338,7 +338,7 @@ async function replyWithDashboardEntry(
 async function handleLobbyButton(
   interaction: ButtonInteraction,
   gameId: string,
-  action: "join" | "leave" | "start",
+  action: "join" | "leave" | "start" | "end",
 ): Promise<void> {
   const game = manager.findByGameId(gameId);
   if (!game) {
@@ -365,6 +365,16 @@ async function handleLobbyButton(
     game.removePlayer(interaction.user.id);
     await game.sendOrUpdateLobby(client);
     await sendEphemeralReply(interaction, { content: "로비에서 나갔습니다." });
+    return;
+  }
+
+  if (action === "end") {
+    if (interaction.user.id !== game.hostId) {
+      throw new Error("로비 종료는 방장만 할 수 있습니다.");
+    }
+
+    await sendEphemeralReply(interaction, { content: "로비를 종료했습니다." });
+    await game.end(client, "방장이 로비를 종료했습니다.");
     return;
   }
 
