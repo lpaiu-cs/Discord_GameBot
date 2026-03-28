@@ -61,6 +61,15 @@ function createFakeCommandInteraction(commandName: string, overrides: Partial<an
     },
     deferred: false,
     replied: false,
+    isChatInputCommand() {
+      return true;
+    },
+    async deferReply() {
+      interaction.deferred = true;
+    },
+    async editReply(payload: { content: string; flags?: number }) {
+      replies.push(payload);
+    },
     async reply(payload: { content: string; flags?: number }) {
       replies.push(payload);
     },

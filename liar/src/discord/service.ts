@@ -131,6 +131,8 @@ export class LiarDiscordService {
       throw new Error("서버 안에서만 사용할 수 있습니다.");
     }
 
+    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
     let game = this.registry.get(interaction.guildId);
     if (game && game.phase !== "ended") {
       throw new Error("이 서버에는 이미 라이어게임이 진행 중입니다.");
@@ -142,18 +144,30 @@ export class LiarDiscordService {
     }
 
     const member = await interaction.guild.members.fetch(interaction.user.id);
-    game = this.registry.create({
-      guildId: interaction.guildId,
-      guildName: interaction.guild.name,
-      channelId: interaction.channelId,
-      hostId: interaction.user.id,
-      hostDisplayName: member.displayName,
-    });
-    await this.syncSeenUser(game.guildId, game.guildName, interaction.user.id, member.displayName);
+    await this.syncSeenUser(interaction.guildId, interaction.guild.name, interaction.user.id, member.displayName);
 
-    await this.replyEphemeral(interaction, "라이어게임 로비를 만들었습니다.");
-    await this.resetPhaseState(client, game, interaction.channel ?? null);
-    return true;
+    let createdGame: LiarGame | null = null;
+    try {
+      game = this.registry.create({
+        guildId: interaction.guildId,
+        guildName: interaction.guild.name,
+        channelId: interaction.channelId,
+        hostId: interaction.user.id,
+        hostDisplayName: member.displayName,
+      });
+      createdGame = game;
+
+      await this.replyEphemeral(interaction, "라이어게임 로비를 만들었습니다.");
+      await this.resetPhaseState(client, game, interaction.channel ?? null);
+      return true;
+    } catch (error) {
+      if (createdGame && this.registry.get(interaction.guildId)?.id === createdGame.id) {
+        this.clearGameRuntimeState(createdGame.id);
+        this.registry.delete(interaction.guildId);
+      }
+
+      throw error;
+    }
   }
 
   async handleButton(client: Client, interaction: ButtonInteraction): Promise<boolean> {
@@ -924,6 +938,11 @@ export class LiarDiscordService {
     interaction: ChatInputCommandInteraction | ButtonInteraction | StringSelectMenuInteraction,
     content: string,
   ): Promise<void> {
+    if (interaction.deferred && interaction.isChatInputCommand()) {
+      await interaction.editReply({ content });
+      return;
+    }
+
     if (interaction.deferred || interaction.replied) {
       await interaction.followUp({ content, flags: MessageFlags.Ephemeral });
       return;
