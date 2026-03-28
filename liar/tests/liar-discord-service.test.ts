@@ -308,6 +308,17 @@ test("종료된 게임은 onGameEnded 콜백을 한 번만 호출한다", async 
   assert.deepEqual(endedGames, [game.id]);
 });
 
+test("종료된 게임은 상태 메시지 갱신 뒤 registry 에서 제거된다", async () => {
+  const { service, game } = createServiceWithGame();
+  const channel = createFakeChannel();
+  const client = { channels: { fetch: async () => channel } } as any;
+
+  game.forceEnd("종료 테스트");
+  await (service as any).resetPhaseState(client, game, channel);
+
+  assert.equal((service as any).registry.get("guild-1"), null);
+});
+
 test("로비의 모드 버튼으로 modeB 를 고를 수 있다", async () => {
   const { service, game } = createServiceWithGame();
   const channel = createFakeChannel();

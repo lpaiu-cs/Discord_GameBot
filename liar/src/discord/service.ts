@@ -555,12 +555,17 @@ export class LiarDiscordService {
   }
 
   private async resetPhaseState(client: Client, game: LiarGame, preferredChannel: Channel | null = null): Promise<void> {
-    if (game.phase === "ended") {
+    const shouldDeleteAfterSync = game.phase === "ended";
+    if (shouldDeleteAfterSync) {
       this.clearGuidanceCooldowns(game.id);
       await this.persistEndedGame(game);
     }
     this.schedulePhaseAutomation(client, game);
     await this.syncStatusMessage(client, game, preferredChannel);
+
+    if (shouldDeleteAfterSync && this.registry.get(game.guildId)?.id === game.id) {
+      this.registry.delete(game.guildId);
+    }
   }
 
   private schedulePhaseAutomation(client: Client, game: LiarGame): void {
