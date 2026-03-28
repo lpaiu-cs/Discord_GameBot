@@ -144,6 +144,7 @@ export class NoopLiarAudioController implements LiarAudioController {
 
 export class DiscordVoiceLiarAudioController implements LiarAudioController {
   private readonly sessions = new Map<string, BroadcastSession>();
+  private readonly observedNetworking = new WeakSet<object>();
 
   async syncPhase(client: Client, game: LiarGame, context: LiarAudioContext = {}): Promise<void> {
     const playback = await this.resolvePlaybackContext(client, game, context);
@@ -306,6 +307,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       this.debug(session.guildId, `voice-debug ${message}`);
     });
     connection.on("stateChange", (oldState, newState) => {
+      this.observeNetworking(session.guildId, newState);
       this.debug(
         session.guildId,
         `voice ${this.formatVoiceState(oldState)} -> ${this.formatVoiceState(newState)}`,
@@ -606,6 +608,30 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     }
 
     console.error(`[liar-audio:${guildId}] ${message}`);
+  }
+
+  private observeNetworking(guildId: string, state: unknown): void {
+    const networking = Reflect.get(state as object, "networking");
+    if (!networking || typeof networking !== "object" || this.observedNetworking.has(networking)) {
+      return;
+    }
+
+    this.observedNetworking.add(networking);
+    const emitter = networking as {
+      on(event: "close", listener: (code: number) => void): void;
+      on(event: "error", listener: (error: Error) => void): void;
+      on(event: "stateChange", listener: (oldState: { code: number }, newState: { code: number }) => void): void;
+    };
+
+    emitter.on("close", (code: number) => {
+      this.debug(guildId, `networking close code=${code}`);
+    });
+    emitter.on("error", (error: Error) => {
+      console.error(`liar networking error in guild ${guildId}`, error);
+    });
+    emitter.on("stateChange", (oldState: { code: number }, newState: { code: number }) => {
+      this.debug(guildId, `networking ${oldState.code} -> ${newState.code}`);
+    });
   }
 
   private formatVoiceState(state: unknown): string {
