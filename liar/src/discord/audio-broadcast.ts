@@ -154,11 +154,17 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       this.stopMixer(session);
       session.destroyAfterResult = true;
       this.playResultTrack(session, winnerTrack);
+      if (session.connection.state.status !== VoiceConnectionStatus.Ready) {
+        this.scheduleReadyReplay(session);
+      }
       return;
     }
 
     session.destroyAfterResult = false;
     this.startMixer(session, loopTrackKey);
+    if (session.connection.state.status !== VoiceConnectionStatus.Ready) {
+      this.scheduleReadyReplay(session);
+    }
   }
 
   async playLobbyJoin(client: Client, game: LiarGame, context: LiarAudioContext = {}): Promise<void> {
@@ -313,6 +319,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     });
 
     this.sessions.set(guild.id, session);
+    this.bootstrapReadyReplay(session);
     return session;
   }
 
@@ -357,6 +364,17 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       void this.replayCurrentAudio(session.guildId);
     }, 150);
     session.pendingReadyReplay.unref?.();
+  }
+
+  private bootstrapReadyReplay(session: BroadcastSession): void {
+    void entersState(session.connection, VoiceConnectionStatus.Ready, 20_000)
+      .then(() => {
+        if (this.sessions.get(session.guildId) !== session) {
+          return;
+        }
+        this.scheduleReadyReplay(session);
+      })
+      .catch(() => undefined);
   }
 
   private async replayCurrentAudio(guildId: string): Promise<void> {
