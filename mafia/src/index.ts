@@ -12,7 +12,7 @@ import {
   Partials,
   StringSelectMenuInteraction,
 } from "discord.js";
-import { LiarDiscordService } from "../../liar/src";
+import { DiscordVoiceLiarAudioController, LiarDiscordService } from "../../liar/src";
 import { config } from "./config";
 import { ensureUserProfile as syncUserProfile } from "./db/ensure-user-profile";
 import { createGameStatsStore } from "./db/create-game-stats-store";
@@ -28,7 +28,13 @@ import { SessionStore, InMemorySessionStore } from "./web/session-store";
 import { DashboardServer } from "./web/server";
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers, GatewayIntentBits.GuildMessages, GatewayIntentBits.MessageContent],
+  intents: [
+    GatewayIntentBits.Guilds,
+    GatewayIntentBits.GuildMembers,
+    GatewayIntentBits.GuildVoiceStates,
+    GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.MessageContent,
+  ],
   partials: [Partials.Channel],
 });
 
@@ -51,6 +57,7 @@ const dashboardAccess = new DashboardAccessService(
   joinTicketService,
   config.joinTicketTtlSeconds * 1_000,
 );
+const liarAudioController = new DiscordVoiceLiarAudioController();
 const liarService = new LiarDiscordService({
   onUserSeen: async (profile) => {
     await syncUserProfile(gameStatsStore, profile);
@@ -65,6 +72,7 @@ const liarService = new LiarDiscordService({
   loadStats: async (discordUserId) => {
     return await gameStatsStore.getLiarPlayerStats(discordUserId);
   },
+  audioController: liarAudioController,
 });
 const dashboardServer = new DashboardServer({
   client,
@@ -135,6 +143,14 @@ client.on(Events.MessageCreate, async (message) => {
 client.on(Events.GuildMemberRemove, async (member) => {
   try {
     await liarService.handleMemberLeave(client, member.guild.id, member.id);
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+client.on(Events.VoiceStateUpdate, async (_oldState, newState) => {
+  try {
+    await liarService.handleVoiceStateUpdate(client, newState.guild.id, newState.id, newState.channelId);
   } catch (error) {
     console.error(error);
   }

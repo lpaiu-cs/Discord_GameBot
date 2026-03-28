@@ -8,6 +8,7 @@ import {
   Client,
   Colors,
   EmbedBuilder,
+  Guild,
   Message,
   MessageFlags,
   RESTPostAPIChatInputApplicationCommandsJSONBody,
@@ -20,6 +21,7 @@ import { getLiarCategories } from "../content/categories";
 import { LiarGame, phaseLabel } from "../engine/game";
 import { InMemoryLiarGameRegistry } from "../engine/registry";
 import { LiarMode, LiarResult, LiarVoteResolution, liarModeLabel, liarModeSummary } from "../engine/model";
+import { LiarAudioController, NoopLiarAudioController } from "./audio-broadcast";
 import { LIAR_CREATE_SUBCOMMAND, LIAR_STATS_SUBCOMMAND, liarCommand, liarKeywordCommand } from "./commands";
 
 const PREFIX_VOTE = "!투표";
@@ -53,6 +55,7 @@ interface LiarDiscordServiceOptions {
   }) => Promise<void>;
   onGameEnded?: (game: LiarGame) => Promise<void>;
   loadStats?: (discordUserId: string) => Promise<LiarStatsSummary | null>;
+  audioController?: LiarAudioController;
 }
 
 interface LiarStatsSummary {
@@ -100,8 +103,11 @@ export class LiarDiscordService {
   private readonly warningTimers = new Map<string, NodeJS.Timeout>();
   private readonly guidanceCooldowns = new Map<string, number>();
   private readonly persistedEndedGames = new Set<string>();
+  private readonly audioController: LiarAudioController;
 
-  constructor(private readonly options: LiarDiscordServiceOptions = {}) {}
+  constructor(private readonly options: LiarDiscordServiceOptions = {}) {
+    this.audioController = options.audioController ?? new NoopLiarAudioController();
+  }
 
   get commandDefinitions(): RESTPostAPIChatInputApplicationCommandsJSONBody[] {
     return [liarCommand.toJSON(), liarKeywordCommand.toJSON()];
@@ -140,10 +146,16 @@ export class LiarDiscordService {
 
     if (game?.phase === "ended") {
       this.clearGameRuntimeState(game.id);
+      await this.audioController.destroy(game.guildId);
       this.registry.delete(interaction.guildId);
     }
 
     const member = await interaction.guild.members.fetch(interaction.user.id);
+    const hostVoiceChannelId = member.voice.channelId ?? null;
+    if (!hostVoiceChannelId) {
+      throw new Error("라이어게임 로비를 만들려면 먼저 음성 채널에 들어가세요.");
+    }
+
     await this.syncSeenUser(interaction.guildId, interaction.guild.name, interaction.user.id, member.displayName);
 
     let createdGame: LiarGame | null = null;
@@ -158,11 +170,12 @@ export class LiarDiscordService {
       createdGame = game;
 
       await this.replyEphemeral(interaction, "라이어게임 로비를 만들었습니다.");
-      await this.resetPhaseState(client, game, interaction.channel ?? null);
+      await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild, hostVoiceChannelId);
       return true;
     } catch (error) {
       if (createdGame && this.registry.get(interaction.guildId)?.id === createdGame.id) {
         this.clearGameRuntimeState(createdGame.id);
+        await this.audioController.destroy(createdGame.guildId);
         this.registry.delete(interaction.guildId);
       }
 
@@ -189,7 +202,10 @@ export class LiarDiscordService {
         game.addPlayer(interaction.user.id, member.displayName);
         await this.syncSeenUser(game.guildId, game.guildName, interaction.user.id, member.displayName);
         await this.replyEphemeral(interaction, "라이어게임에 참가했습니다.");
-        await this.resetPhaseState(client, game, interaction.channel ?? null);
+        await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
+        await this.audioController.playLobbyJoin(client, game, {
+          guild: interaction.guild,
+        });
         return true;
       }
       case "leave": {
@@ -199,12 +215,12 @@ export class LiarDiscordService {
 
         if (game.playerCount === 0) {
           game.forceEnd("참가자가 모두 나가 로비를 닫았습니다.");
-          await this.resetPhaseState(client, game, interaction.channel ?? null);
+          await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
           await this.sendPublicMessage(client, game, "참가자가 모두 나가 로비를 닫았습니다.", interaction.channel ?? null);
           return true;
         }
 
-        await this.resetPhaseState(client, game, interaction.channel ?? null);
+        await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
         if (previousHostId === interaction.user.id && game.hostId) {
           const newHost = game.getPlayer(game.hostId);
           await this.sendPublicMessage(client, game, `${newHost?.displayName ?? "다음 참가자"} 님이 새 방장이 되었습니다.`, interaction.channel ?? null);
@@ -216,7 +232,7 @@ export class LiarDiscordService {
         this.assertHost(interaction.user.id, game);
         game.setMode(action);
         await this.replyEphemeral(interaction, `규칙 모드를 ${liarModeLabel(game.mode)} 로 바꿨습니다.`);
-        await this.resetPhaseState(client, game, interaction.channel ?? null);
+        await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
         return true;
       }
       case "start": {
@@ -234,7 +250,10 @@ export class LiarDiscordService {
           }
         }
         await this.replyEphemeral(interaction, "라이어게임을 시작했습니다. 각 참가자는 `/제시어` 를 확인하세요.");
-        await this.resetPhaseState(client, game, interaction.channel ?? null);
+        await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
+        await this.audioController.playGameStart(client, game, {
+          guild: interaction.guild,
+        });
         await this.sendPublicMessage(
           client,
           game,
@@ -257,7 +276,7 @@ export class LiarDiscordService {
         this.assertHost(interaction.user.id, game);
         game.beginVote();
         await this.replyEphemeral(interaction, "투표를 시작했습니다.");
-        await this.resetPhaseState(client, game, interaction.channel ?? null);
+        await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
         await this.sendPublicMessage(
           client,
           game,
@@ -270,7 +289,7 @@ export class LiarDiscordService {
         this.assertHost(interaction.user.id, game);
         const result = game.forceEnd("방장이 게임을 종료했습니다.");
         await this.replyEphemeral(interaction, "라이어게임을 종료했습니다.");
-        await this.resetPhaseState(client, game, interaction.channel ?? null);
+        await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
         await this.sendPublicMessage(client, game, this.buildResultAnnouncement(game, result), interaction.channel ?? null);
         return true;
       }
@@ -278,7 +297,7 @@ export class LiarDiscordService {
         this.assertHost(interaction.user.id, game);
         const resolution = game.tallyVotes();
         await this.replyEphemeral(interaction, "현재까지의 투표를 집계했습니다.");
-        await this.resetPhaseState(client, game, interaction.channel ?? null);
+        await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild);
         await this.announceVoteResolution(client, game, resolution, interaction.channel ?? null);
         return true;
       }
@@ -307,7 +326,7 @@ export class LiarDiscordService {
 
     game.setCategory(interaction.values[0]);
     await this.replyEphemeral(interaction, `카테고리를 ${game.category.label} 로 바꿨습니다.`);
-    await this.resetPhaseState(client, game, interaction.channel ?? null);
+    await this.resetPhaseState(client, game, interaction.channel ?? null, interaction.guild ?? null);
     return true;
   }
 
@@ -342,6 +361,18 @@ export class LiarDiscordService {
     const result = game.forceEnd(`${player?.displayName ?? "참가자"} 님이 서버에서 나가 게임을 종료했습니다.`);
     await this.resetPhaseState(client, game);
     await this.sendPublicMessage(client, game, this.buildResultAnnouncement(game, result));
+    return true;
+  }
+
+  async handleVoiceStateUpdate(client: Client, guildId: string, userId: string, channelId: string | null): Promise<boolean> {
+    const game = this.registry.get(guildId);
+    if (!game || game.phase === "ended" || game.hostId !== userId) {
+      return false;
+    }
+
+    await this.audioController.syncPhase(client, game, {
+      hostVoiceChannelId: channelId,
+    });
     return true;
   }
 
@@ -554,13 +585,23 @@ export class LiarDiscordService {
     return game;
   }
 
-  private async resetPhaseState(client: Client, game: LiarGame, preferredChannel: Channel | null = null): Promise<void> {
+  private async resetPhaseState(
+    client: Client,
+    game: LiarGame,
+    preferredChannel: Channel | null = null,
+    preferredGuild: Guild | null = null,
+    preferredHostVoiceChannelId: string | null | undefined = undefined,
+  ): Promise<void> {
     const shouldDeleteAfterSync = game.phase === "ended";
     if (shouldDeleteAfterSync) {
       this.clearGuidanceCooldowns(game.id);
       await this.persistEndedGame(game);
     }
     this.schedulePhaseAutomation(client, game);
+    await this.audioController.syncPhase(client, game, {
+      guild: preferredGuild,
+      hostVoiceChannelId: preferredHostVoiceChannelId,
+    });
     await this.syncStatusMessage(client, game, preferredChannel);
 
     if (shouldDeleteAfterSync && this.registry.get(game.guildId)?.id === game.id) {
@@ -1059,6 +1100,7 @@ export class LiarDiscordService {
     const lines = [
       "4명 이상이 되면 방장이 시작할 수 있습니다.",
       "참가/나가기는 아래 버튼으로 처리합니다.",
+      "오디오는 방장이 있는 음성 채널로 공용 브로드캐스트됩니다.",
       game.mode === "modeA"
         ? "아래 모드 버튼에서 모드를 고르고, 모드A일 때만 카테고리 메뉴가 열립니다."
         : "아래 모드 버튼에서 규칙을 바꾸며, 모드B의 시민/라이어 카테고리는 시작 시 자동 배정됩니다.",

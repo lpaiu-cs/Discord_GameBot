@@ -1,5 +1,10 @@
 export { liarCategories, getLiarCategories, getLiarCategory, hasGuildCategoryOverride } from "./content/categories";
 export { liarCommand, liarKeywordCommand, LIAR_CREATE_SUBCOMMAND, LIAR_STATS_SUBCOMMAND } from "./discord/commands";
+export {
+  DiscordVoiceLiarAudioController,
+  NoopLiarAudioController,
+} from "./discord/audio-broadcast";
+export type { LiarAudioContext, LiarAudioController } from "./discord/audio-broadcast";
 export { LiarDiscordService } from "./discord/service";
 export { LiarGame, phaseLabel } from "./engine/game";
 export { InMemoryLiarGameRegistry } from "./engine/registry";

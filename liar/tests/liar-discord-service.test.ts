@@ -3,6 +3,27 @@ import { test } from "node:test";
 import { LiarDiscordService } from "../src/discord/service";
 import { LiarGame } from "../src/engine/game";
 
+function createFakeAudioController() {
+  const calls: string[] = [];
+  return {
+    calls,
+    controller: {
+      async syncPhase(_client: any, game: LiarGame) {
+        calls.push(`sync:${game.phase}`);
+      },
+      async playLobbyJoin(_client: any, game: LiarGame) {
+        calls.push(`join:${game.phase}`);
+      },
+      async playGameStart(_client: any, game: LiarGame) {
+        calls.push(`start:${game.phase}`);
+      },
+      async destroy(guildId: string) {
+        calls.push(`destroy:${guildId}`);
+      },
+    },
+  };
+}
+
 function createFakeChannel() {
   const sent: Array<{ content?: string; embeds?: any[]; components?: any[] }> = [];
   const edited: Array<{ content?: string; embeds?: any[]; components?: any[] }> = [];
@@ -333,6 +354,29 @@ test("로비의 모드 버튼으로 modeB 를 고를 수 있다", async () => {
   assert.match(replies[0].content, /모드B/);
 });
 
+test("/liar create 는 방장이 음성 채널에 없으면 거부된다", async () => {
+  const service = new LiarDiscordService();
+  const channel = createFakeChannel();
+  const { interaction } = createFakeCommandInteraction("liar", {
+    guildId: "guild-1",
+    guild: {
+      id: "guild-1",
+      name: "테스트 길드",
+      members: {
+        fetch: async () => ({ displayName: "방장", voice: { channelId: null } }),
+      },
+    },
+    channelId: "channel-1",
+    channel,
+    options: {
+      getSubcommand: () => "create",
+      getUser: () => null,
+    },
+  });
+
+  await assert.rejects(() => service.handleCommand({} as any, interaction as any), /먼저 음성 채널/);
+});
+
 test("modeB 에서는 카테고리 선택 메뉴를 직접 사용할 수 없다", async () => {
   const { service, game } = createServiceWithGame();
   const channel = createFakeChannel();
@@ -357,7 +401,10 @@ test("modeA 일 때만 카테고리 선택 메뉴가 렌더링된다", async () 
 });
 
 test("/liar create 는 새 로비 임베드 상태 메시지를 띄운다", async () => {
-  const service = new LiarDiscordService();
+  const audio = createFakeAudioController();
+  const service = new LiarDiscordService({
+    audioController: audio.controller as any,
+  });
   const channel = createFakeChannel();
   const client = { channels: { fetch: async () => channel } } as any;
   const { interaction, replies } = createFakeCommandInteraction("liar", {
@@ -366,7 +413,7 @@ test("/liar create 는 새 로비 임베드 상태 메시지를 띄운다", asyn
       id: "guild-1",
       name: "테스트 길드",
       members: {
-        fetch: async () => ({ displayName: "방장" }),
+        fetch: async () => ({ displayName: "방장", voice: { channelId: "voice-1" } }),
       },
     },
     channelId: "channel-1",
@@ -382,7 +429,63 @@ test("/liar create 는 새 로비 임베드 상태 메시지를 띄운다", asyn
   assert.equal(handled, true);
   assert.equal(replies.length, 1);
   assert.match(replies[0].content, /로비를 만들었습니다/);
+  assert.ok(audio.calls.includes("sync:lobby"));
   assert.ok(channel.sent.some((payload) => payload.embeds?.[0]?.data?.title === "라이어게임 로비"));
+});
+
+test("로비 참가 시 공용 입장 효과음이 요청된다", async () => {
+  const audio = createFakeAudioController();
+  const service = new LiarDiscordService({
+    audioController: audio.controller as any,
+  }) as any;
+  const channel = createFakeChannel();
+  const client = { channels: { fetch: async () => channel } } as any;
+  const game = service.registry.create({
+    guildId: "guild-1",
+    guildName: "테스트 길드",
+    channelId: "channel-1",
+    hostId: "host",
+    hostDisplayName: "방장",
+    categoryId: "food",
+  }) as LiarGame;
+
+  const { interaction } = createFakeButtonInteraction(`liar:join:${game.id}`, {
+    channel,
+    guild: {
+      members: {
+        fetch: async () => ({ displayName: "민준" }),
+      },
+    },
+    user: { id: "p1", username: "민준" },
+  });
+
+  const handled = await service.handleButton(client, interaction as any);
+
+  assert.equal(handled, true);
+  assert.ok(audio.calls.includes("sync:lobby"));
+  assert.ok(audio.calls.includes("join:lobby"));
+});
+
+test("게임 시작 시 시작 효과음과 진행 BGM 전환이 요청된다", async () => {
+  const audio = createFakeAudioController();
+  const { service, game } = createServiceWithGame();
+  (service as any).audioController = audio.controller;
+  const channel = createFakeChannel();
+  const client = { channels: { fetch: async () => channel } } as any;
+  const { interaction } = createFakeButtonInteraction(`liar:start:${game.id}`, {
+    channel,
+    guild: {
+      members: {
+        fetch: async () => ({ displayName: "방장", voice: { channelId: "voice-1" } }),
+      },
+    },
+  });
+
+  const handled = await service.handleButton(client, interaction as any);
+
+  assert.equal(handled, true);
+  assert.ok(audio.calls.includes("sync:clue"));
+  assert.ok(audio.calls.includes("start:clue"));
 });
 
 test("/liar stats 는 저장된 전적 요약을 ephemeral 로 보여준다", async () => {
