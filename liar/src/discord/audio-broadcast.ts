@@ -18,6 +18,7 @@ import { Client, Guild } from "discord.js";
 import { LiarGame } from "../engine/game";
 
 const ffmpegPath = require("ffmpeg-static") as string | null;
+const AUDIO_DEBUG_ENABLED = process.env.LIAR_AUDIO_DEBUG === "true";
 
 const PCM_SAMPLE_RATE = 48_000;
 const PCM_CHANNELS = 2;
@@ -271,7 +272,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
 
     const player = createAudioPlayer({
       behaviors: {
-        noSubscriber: NoSubscriberBehavior.Pause,
+        noSubscriber: NoSubscriberBehavior.Play,
       },
     });
     const connection = joinVoiceChannel({
@@ -294,6 +295,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
 
     connection.subscribe(player);
     connection.on("stateChange", (_oldState, newState) => {
+      this.debug(session.guildId, `voice ${_oldState.status} -> ${newState.status}`);
       if (newState.status === VoiceConnectionStatus.Ready) {
         this.scheduleReadyReplay(session);
       }
@@ -303,9 +305,13 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     });
 
     player.on(AudioPlayerStatus.Idle, () => {
+      this.debug(session.guildId, "player idle");
       if (session.resultSource && session.destroyAfterResult) {
         void this.destroy(session.guildId);
       }
+    });
+    player.on("stateChange", (oldState, newState) => {
+      this.debug(session.guildId, `player ${oldState.status} -> ${newState.status}`);
     });
     player.on("error", (error: Error) => {
       console.error(`failed to play liar audio in guild ${guild.id}`, error);
@@ -325,6 +331,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
 
   private startMixer(session: BroadcastSession, bgmKey: LoopTrackKey | null): void {
     if (!session.mixer) {
+      this.debug(session.guildId, `start mixer bgm=${bgmKey ?? "none"} status=${session.connection.state.status}`);
       const output = new PassThrough();
       const resource = createAudioResource(output, {
         inputType: StreamType.Raw,
@@ -349,12 +356,14 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       return;
     }
 
+    this.debug(session.guildId, `swap mixer bgm=${session.mixer.bgmKey ?? "none"} -> ${bgmKey ?? "none"}`);
     session.mixer.bgmKey = bgmKey;
     this.stopSource(session.mixer.bgmSource);
     session.mixer.bgmSource = bgmKey ? this.createPcmSource(bgmKey) : null;
   }
 
   private scheduleReadyReplay(session: BroadcastSession): void {
+    this.debug(session.guildId, `schedule ready replay status=${session.connection.state.status}`);
     if (session.pendingReadyReplay) {
       clearTimeout(session.pendingReadyReplay);
     }
@@ -367,6 +376,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
   }
 
   private bootstrapReadyReplay(session: BroadcastSession): void {
+    this.debug(session.guildId, "bootstrap ready replay");
     void entersState(session.connection, VoiceConnectionStatus.Ready, 20_000)
       .then(() => {
         if (this.sessions.get(session.guildId) !== session) {
@@ -383,9 +393,12 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       return;
     }
 
+    this.debug(guildId, `replay current audio status=${session.connection.state.status}`);
+
     try {
       await entersState(session.connection, VoiceConnectionStatus.Ready, 2_000);
     } catch {
+      this.debug(guildId, "replay skipped because connection was not ready in time");
       return;
     }
 
@@ -403,6 +416,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
 
     const bgmKey = session.mixer.bgmKey;
     const overlayKeys = session.mixer.overlays.map((overlay) => overlay.key as OverlayTrackKey);
+    this.debug(guildId, `replay mixer bgm=${bgmKey ?? "none"} overlays=${overlayKeys.join(",") || "none"}`);
     this.stopMixer(session);
     this.startMixer(session, bgmKey);
     for (const overlayKey of overlayKeys) {
@@ -427,6 +441,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
   }
 
   private playResultTrack(session: BroadcastSession, key: ResultTrackKey): void {
+    this.debug(session.guildId, `play result track=${key}`);
     this.stopSource(session.resultSource);
     const source = this.createPcmSource(key);
     session.resultSource = source;
@@ -445,6 +460,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       return;
     }
 
+    this.debug(session.guildId, `enqueue overlay=${key}`);
     session.mixer.overlays.push(this.createPcmSource(key));
   }
 
@@ -512,6 +528,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
   private createPcmSource(key: TrackKey): PcmSource {
     const executable = ffmpegPath ?? "ffmpeg";
     const filePath = resolveAudioPath(TRACK_FILES[key]);
+    this.debug("global", `spawn ffmpeg track=${key} file=${filePath}`);
     const process = spawn(
       executable,
       [
@@ -567,5 +584,13 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     }
 
     source.process.kill("SIGKILL");
+  }
+
+  private debug(guildId: string, message: string): void {
+    if (!AUDIO_DEBUG_ENABLED) {
+      return;
+    }
+
+    console.log(`[liar-audio:${guildId}] ${message}`);
   }
 }
