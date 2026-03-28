@@ -57,6 +57,13 @@ interface BroadcastSession {
   pendingReadyReplay: NodeJS.Timeout | null;
 }
 
+interface VoiceStateDebugInfo {
+  status: string;
+  reason?: unknown;
+  closeCode?: unknown;
+  networkingCode?: unknown;
+}
+
 export interface LiarAudioContext {
   readonly guild?: Guild | null;
   readonly hostVoiceChannelId?: string | null;
@@ -279,6 +286,7 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       channelId,
       adapterCreator: guild.voiceAdapterCreator,
       selfDeaf: true,
+      debug: process.env.LIAR_AUDIO_DEBUG === "true",
     });
 
     const session: BroadcastSession = {
@@ -292,9 +300,16 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       pendingReadyReplay: null,
     };
 
+    this.debug(session.guildId, `join voice channel=${channelId}`);
     connection.subscribe(player);
-    connection.on("stateChange", (_oldState, newState) => {
-      this.debug(session.guildId, `voice ${_oldState.status} -> ${newState.status}`);
+    connection.on("debug", (message: string) => {
+      this.debug(session.guildId, `voice-debug ${message}`);
+    });
+    connection.on("stateChange", (oldState, newState) => {
+      this.debug(
+        session.guildId,
+        `voice ${this.formatVoiceState(oldState)} -> ${this.formatVoiceState(newState)}`,
+      );
       if (newState.status === VoiceConnectionStatus.Ready) {
         this.scheduleReadyReplay(session);
       }
@@ -591,5 +606,25 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     }
 
     console.error(`[liar-audio:${guildId}] ${message}`);
+  }
+
+  private formatVoiceState(state: unknown): string {
+    const info = state as VoiceStateDebugInfo;
+    const parts = [`status=${info.status}`];
+    if (info.reason !== undefined) {
+      parts.push(`reason=${String(info.reason)}`);
+    }
+    if (info.closeCode !== undefined) {
+      parts.push(`closeCode=${String(info.closeCode)}`);
+    }
+    if (info.networkingCode !== undefined) {
+      parts.push(`networking=${String(info.networkingCode)}`);
+    } else {
+      const networkingCode = Reflect.get(Reflect.get(info, "networking") ?? {}, "state")?.code;
+      if (networkingCode !== undefined) {
+        parts.push(`networking=${String(networkingCode)}`);
+      }
+    }
+    return parts.join(" ");
   }
 }
