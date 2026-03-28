@@ -17,6 +17,9 @@ function createFakeAudioController() {
       async playGameStart(_client: any, game: LiarGame) {
         calls.push(`start:${game.phase}`);
       },
+      async playTurnCue(_client: any, game: LiarGame) {
+        calls.push(`turn:${game.phase}`);
+      },
       async destroy(guildId: string) {
         calls.push(`destroy:${guildId}`);
       },
@@ -524,6 +527,7 @@ test("게임 시작 시 시작 효과음과 진행 BGM 전환이 요청된다", 
   assert.equal(handled, true);
   assert.ok(audio.calls.includes("sync:clue"));
   assert.ok(audio.calls.includes("start:clue"));
+  assert.ok(audio.calls.includes("turn:clue"));
 });
 
 test("/liar stats 는 저장된 전적 요약을 ephemeral 로 보여준다", async () => {

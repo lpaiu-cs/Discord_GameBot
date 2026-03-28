@@ -256,6 +256,9 @@ export class LiarDiscordService {
         await this.audioController.playGameStart(client, game, {
           guild: interaction.guild,
         });
+        await this.audioController.playTurnCue(client, game, {
+          guild: interaction.guild,
+        });
         await this.sendPublicMessage(
           client,
           game,
@@ -434,6 +437,7 @@ export class LiarDiscordService {
         );
       } else {
         const nextSpeaker = result.nextSpeakerId ? game.getPlayer(result.nextSpeakerId) : null;
+        await this.audioController.playTurnCue(client, game);
         await this.sendPublicMessage(client, game, `다음 차례는 ${nextSpeaker?.displayName ?? "알 수 없음"} 님입니다.`, message.channel);
       }
       return true;
@@ -795,6 +799,7 @@ export class LiarDiscordService {
         }
 
         const nextSpeaker = skipped.nextSpeakerId ? game.getPlayer(skipped.nextSpeakerId) : null;
+        await this.audioController.playTurnCue(client, game);
         await this.sendPublicMessage(
           client,
           game,

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { PassThrough } from "node:stream";
 import { resolve } from "node:path";
 import {
   AudioPlayer,
@@ -18,26 +19,41 @@ import { LiarGame } from "../engine/game";
 
 const ffmpegPath = require("ffmpeg-static") as string | null;
 
-type LoopTrackKey = "lobby" | "discussion" | "guess";
-type OneShotTrackKey = "join" | "start" | "citizensWin" | "liarWin";
-type TrackKey = LoopTrackKey | OneShotTrackKey;
+const PCM_SAMPLE_RATE = 48_000;
+const PCM_CHANNELS = 2;
+const PCM_BYTES_PER_SAMPLE = 2;
+const PCM_FRAME_MS = 20;
+const PCM_CHUNK_SIZE = (PCM_SAMPLE_RATE * PCM_CHANNELS * PCM_BYTES_PER_SAMPLE * PCM_FRAME_MS) / 1_000;
 
-interface QueuedTrack {
-  readonly key: OneShotTrackKey;
-  readonly disconnectAfter: boolean;
+type LoopTrackKey = "lobby" | "discussion" | "guess";
+type OverlayTrackKey = "join" | "start" | "turn";
+type ResultTrackKey = "citizensWin" | "liarWin";
+type TrackKey = LoopTrackKey | OverlayTrackKey | ResultTrackKey;
+
+interface PcmSource {
+  readonly key: TrackKey;
+  readonly process: ReturnType<typeof spawn>;
+  readonly buffers: Buffer[];
+  bufferedBytes: number;
+  ended: boolean;
+}
+
+interface AudioMixer {
+  readonly output: PassThrough;
+  bgmKey: LoopTrackKey | null;
+  bgmSource: PcmSource | null;
+  readonly overlays: PcmSource[];
+  readonly timer: NodeJS.Timeout;
 }
 
 interface BroadcastSession {
   readonly guildId: string;
-  connection: VoiceConnection;
   readonly player: AudioPlayer;
+  connection: VoiceConnection;
   channelId: string;
-  loopTrackKey: LoopTrackKey | null;
-  activeTrackKey: TrackKey | null;
-  activeLoop: boolean;
-  activeProcess: ReturnType<typeof spawn> | null;
-  readonly queue: QueuedTrack[];
-  disconnectWhenIdle: boolean;
+  mixer: AudioMixer | null;
+  resultSource: PcmSource | null;
+  destroyAfterResult: boolean;
 }
 
 export interface LiarAudioContext {
@@ -49,6 +65,7 @@ export interface LiarAudioController {
   syncPhase(client: Client, game: LiarGame, context?: LiarAudioContext): Promise<void>;
   playLobbyJoin(client: Client, game: LiarGame, context?: LiarAudioContext): Promise<void>;
   playGameStart(client: Client, game: LiarGame, context?: LiarAudioContext): Promise<void>;
+  playTurnCue(client: Client, game: LiarGame, context?: LiarAudioContext): Promise<void>;
   destroy(guildId: string): Promise<void>;
 }
 
@@ -58,6 +75,7 @@ const TRACK_FILES: Record<TrackKey, string> = {
   guess: "bgm_guess.mp3",
   join: "sfx_join.mp3",
   start: "sfx_start.mp3",
+  turn: "sfx_turn.mp3",
   citizensWin: "bgm_citizen_win.mp3",
   liarWin: "bgm_liar_win.mp3",
 };
@@ -93,7 +111,7 @@ function phaseLoopTrack(game: LiarGame): LoopTrackKey | null {
   }
 }
 
-function resultTrack(game: LiarGame): OneShotTrackKey | null {
+function resultTrack(game: LiarGame): ResultTrackKey | null {
   if (!game.result) {
     return null;
   }
@@ -112,6 +130,7 @@ export class NoopLiarAudioController implements LiarAudioController {
   async syncPhase(): Promise<void> {}
   async playLobbyJoin(): Promise<void> {}
   async playGameStart(): Promise<void> {}
+  async playTurnCue(): Promise<void> {}
   async destroy(): Promise<void> {}
 }
 
@@ -119,15 +138,10 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
   private readonly sessions = new Map<string, BroadcastSession>();
 
   async syncPhase(client: Client, game: LiarGame, context: LiarAudioContext = {}): Promise<void> {
+    const playback = await this.resolvePlaybackContext(client, game, context);
     const winnerTrack = game.phase === "ended" ? resultTrack(game) : null;
     const loopTrackKey = phaseLoopTrack(game);
 
-    if (game.phase === "ended" && !winnerTrack) {
-      await this.destroy(game.guildId);
-      return;
-    }
-
-    const playback = await this.resolvePlaybackContext(client, game, context);
     if (!playback) {
       await this.destroy(game.guildId);
       return;
@@ -136,15 +150,14 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     const session = await this.ensureSession(playback.guild, playback.channelId);
 
     if (winnerTrack) {
-      session.loopTrackKey = null;
-      session.queue.length = 0;
-      session.disconnectWhenIdle = true;
-      this.enqueueTrack(session, winnerTrack, true);
+      this.stopMixer(session);
+      session.destroyAfterResult = true;
+      this.playResultTrack(session, winnerTrack);
       return;
     }
 
-    session.disconnectWhenIdle = false;
-    this.setLoopTrack(session, loopTrackKey);
+    session.destroyAfterResult = false;
+    this.startMixer(session, loopTrackKey);
   }
 
   async playLobbyJoin(client: Client, game: LiarGame, context: LiarAudioContext = {}): Promise<void> {
@@ -158,8 +171,8 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     }
 
     const session = await this.ensureSession(playback.guild, playback.channelId);
-    this.setLoopTrack(session, "lobby");
-    this.enqueueTrack(session, "join", false);
+    this.startMixer(session, "lobby");
+    this.enqueueOverlay(session, "join");
   }
 
   async playGameStart(client: Client, game: LiarGame, context: LiarAudioContext = {}): Promise<void> {
@@ -169,8 +182,19 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     }
 
     const session = await this.ensureSession(playback.guild, playback.channelId);
-    this.setLoopTrack(session, phaseLoopTrack(game));
-    this.enqueueTrack(session, "start", false);
+    this.startMixer(session, phaseLoopTrack(game));
+    this.enqueueOverlay(session, "start");
+  }
+
+  async playTurnCue(client: Client, game: LiarGame, context: LiarAudioContext = {}): Promise<void> {
+    const playback = await this.resolvePlaybackContext(client, game, context);
+    if (!playback) {
+      return;
+    }
+
+    const session = await this.ensureSession(playback.guild, playback.channelId);
+    this.startMixer(session, phaseLoopTrack(game));
+    this.enqueueOverlay(session, "turn");
   }
 
   async destroy(guildId: string): Promise<void> {
@@ -179,12 +203,9 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       return;
     }
 
-    session.queue.length = 0;
-    session.loopTrackKey = null;
-    session.activeTrackKey = null;
-    session.activeLoop = false;
-    session.disconnectWhenIdle = false;
-    this.stopActiveProcess(session);
+    this.stopMixer(session);
+    this.stopSource(session.resultSource);
+    session.resultSource = null;
     session.player.stop(true);
     session.connection.destroy();
     this.sessions.delete(guildId);
@@ -254,29 +275,27 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
 
     const session: BroadcastSession = {
       guildId: guild.id,
-      connection,
       player,
+      connection,
       channelId,
-      loopTrackKey: null,
-      activeTrackKey: null,
-      activeLoop: false,
-      activeProcess: null,
-      queue: [],
-      disconnectWhenIdle: false,
+      mixer: null,
+      resultSource: null,
+      destroyAfterResult: false,
     };
 
     player.on(AudioPlayerStatus.Idle, () => {
-      void this.advancePlayback(session);
+      if (session.resultSource && session.destroyAfterResult) {
+        void this.destroy(session.guildId);
+      }
     });
-    player.on("error", (error) => {
+    player.on("error", (error: Error) => {
       console.error(`failed to play liar audio in guild ${guild.id}`, error);
-      this.stopActiveProcess(session);
-      session.activeTrackKey = null;
-      session.activeLoop = false;
-      void this.advancePlayback(session);
+      if (session.resultSource) {
+        this.stopSource(session.resultSource);
+        session.resultSource = null;
+      }
     });
-
-    connection.on("error", (error) => {
+    connection.on("error", (error: Error) => {
       console.error(`liar voice connection error in guild ${guild.id}`, error);
     });
 
@@ -284,77 +303,137 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     return session;
   }
 
-  private setLoopTrack(session: BroadcastSession, key: LoopTrackKey | null): void {
-    session.loopTrackKey = key;
-    if (!key) {
-      if (session.activeLoop) {
-        session.player.stop(true);
-      }
+  private startMixer(session: BroadcastSession, bgmKey: LoopTrackKey | null): void {
+    if (!session.mixer) {
+      const output = new PassThrough();
+      const resource = createAudioResource(output, {
+        inputType: StreamType.Raw,
+      });
+      const mixer: AudioMixer = {
+        output,
+        bgmKey,
+        bgmSource: bgmKey ? this.createPcmSource(bgmKey) : null,
+        overlays: [],
+        timer: setInterval(() => {
+          this.pumpMixer(session);
+        }, PCM_FRAME_MS),
+      };
+      mixer.timer.unref?.();
+      session.mixer = mixer;
+      session.resultSource = null;
+      session.player.play(resource);
       return;
     }
 
-    if (session.activeTrackKey === key && session.activeLoop && session.queue.length === 0) {
+    if (session.mixer.bgmKey === bgmKey) {
       return;
     }
 
-    if (session.activeTrackKey === null && session.queue.length === 0) {
-      void this.advancePlayback(session);
-      return;
-    }
-
-    if (session.activeLoop && session.activeTrackKey !== key && session.queue.length === 0) {
-      session.player.stop(true);
-    }
+    session.mixer.bgmKey = bgmKey;
+    this.stopSource(session.mixer.bgmSource);
+    session.mixer.bgmSource = bgmKey ? this.createPcmSource(bgmKey) : null;
   }
 
-  private enqueueTrack(session: BroadcastSession, key: OneShotTrackKey, disconnectAfter: boolean): void {
-    session.queue.push({ key, disconnectAfter });
-
-    if (session.activeTrackKey === null) {
-      void this.advancePlayback(session);
+  private stopMixer(session: BroadcastSession): void {
+    const mixer = session.mixer;
+    if (!mixer) {
       return;
     }
 
-    if (session.activeLoop) {
-      session.player.stop(true);
+    clearInterval(mixer.timer);
+    this.stopSource(mixer.bgmSource);
+    for (const overlay of mixer.overlays) {
+      this.stopSource(overlay);
     }
+    mixer.overlays.length = 0;
+    mixer.output.end();
+    session.mixer = null;
   }
 
-  private async advancePlayback(session: BroadcastSession): Promise<void> {
-    this.stopActiveProcess(session);
-    session.activeTrackKey = null;
-    session.activeLoop = false;
-
-    const queued = session.queue.shift();
-    if (queued) {
-      session.disconnectWhenIdle = queued.disconnectAfter;
-      this.playTrack(session, queued.key, false);
-      return;
+  private playResultTrack(session: BroadcastSession, key: ResultTrackKey): void {
+    this.stopSource(session.resultSource);
+    const source = this.createPcmSource(key);
+    session.resultSource = source;
+    if (!source.process.stdout) {
+      throw new Error("라이어 결과 오디오 stdout 을 열지 못했습니다.");
     }
 
-    if (session.loopTrackKey) {
-      session.disconnectWhenIdle = false;
-      this.playTrack(session, session.loopTrackKey, true);
-      return;
-    }
-
-    if (session.disconnectWhenIdle) {
-      await this.destroy(session.guildId);
-    }
-  }
-
-  private playTrack(session: BroadcastSession, key: TrackKey, loop: boolean): void {
-    const { resource, process } = this.createTrackResource(key);
-    session.activeTrackKey = key;
-    session.activeLoop = loop;
-    session.activeProcess = process;
+    const resource = createAudioResource(source.process.stdout, {
+      inputType: StreamType.Raw,
+    });
     session.player.play(resource);
   }
 
-  private createTrackResource(key: TrackKey): {
-    resource: ReturnType<typeof createAudioResource>;
-    process: ReturnType<typeof spawn>;
-  } {
+  private enqueueOverlay(session: BroadcastSession, key: OverlayTrackKey): void {
+    if (!session.mixer) {
+      return;
+    }
+
+    session.mixer.overlays.push(this.createPcmSource(key));
+  }
+
+  private pumpMixer(session: BroadcastSession): void {
+    const mixer = session.mixer;
+    if (!mixer) {
+      return;
+    }
+
+    if (mixer.bgmKey && (!mixer.bgmSource || (mixer.bgmSource.ended && mixer.bgmSource.bufferedBytes === 0))) {
+      this.stopSource(mixer.bgmSource);
+      mixer.bgmSource = this.createPcmSource(mixer.bgmKey);
+    }
+
+    const mixedChunk = Buffer.alloc(PCM_CHUNK_SIZE);
+    if (mixer.bgmSource) {
+      const bgmChunk = this.consumeChunk(mixer.bgmSource, PCM_CHUNK_SIZE);
+      bgmChunk.copy(mixedChunk, 0, 0, PCM_CHUNK_SIZE);
+    }
+
+    for (let index = mixer.overlays.length - 1; index >= 0; index -= 1) {
+      const overlay = mixer.overlays[index];
+      const overlayChunk = this.consumeChunk(overlay, PCM_CHUNK_SIZE);
+      this.mixPcmInto(mixedChunk, overlayChunk);
+
+      if (overlay.ended && overlay.bufferedBytes === 0) {
+        this.stopSource(overlay);
+        mixer.overlays.splice(index, 1);
+      }
+    }
+
+    mixer.output.write(mixedChunk);
+  }
+
+  private mixPcmInto(target: Buffer, overlay: Buffer): void {
+    for (let offset = 0; offset < target.length; offset += PCM_BYTES_PER_SAMPLE) {
+      const mixed = target.readInt16LE(offset) + overlay.readInt16LE(offset);
+      const clamped = Math.max(-32768, Math.min(32767, mixed));
+      target.writeInt16LE(clamped, offset);
+    }
+  }
+
+  private consumeChunk(source: PcmSource, size: number): Buffer {
+    const chunk = Buffer.alloc(size);
+    let written = 0;
+
+    while (written < size && source.buffers.length > 0) {
+      const current = source.buffers[0];
+      const remaining = size - written;
+      const take = Math.min(current.length, remaining);
+      current.copy(chunk, written, 0, take);
+      written += take;
+      source.bufferedBytes -= take;
+
+      if (take === current.length) {
+        source.buffers.shift();
+      } else {
+        source.buffers[0] = current.subarray(take);
+      }
+    }
+
+    return chunk;
+  }
+
+  private createPcmSource(key: TrackKey): PcmSource {
     const executable = ffmpegPath ?? "ffmpeg";
     const filePath = resolveAudioPath(TRACK_FILES[key]);
     const process = spawn(
@@ -368,9 +447,9 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
         "-f",
         "s16le",
         "-ar",
-        "48000",
+        String(PCM_SAMPLE_RATE),
         "-ac",
-        "2",
+        String(PCM_CHANNELS),
         "pipe:1",
       ],
       {
@@ -383,20 +462,34 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       throw new Error("라이어 오디오 ffmpeg stdout 파이프를 열지 못했습니다.");
     }
 
-    const resource = createAudioResource(process.stdout, {
-      inputType: StreamType.Raw,
+    const source: PcmSource = {
+      key,
+      process,
+      buffers: [],
+      bufferedBytes: 0,
+      ended: false,
+    };
+
+    process.stdout.on("data", (chunk: Buffer) => {
+      source.buffers.push(chunk);
+      source.bufferedBytes += chunk.length;
+    });
+    process.stdout.on("end", () => {
+      source.ended = true;
+    });
+    process.on("error", (error: Error) => {
+      source.ended = true;
+      console.error(`failed to decode liar audio track ${key}`, error);
     });
 
-    return { resource, process };
+    return source;
   }
 
-  private stopActiveProcess(session: BroadcastSession): void {
-    const current = session.activeProcess;
-    session.activeProcess = null;
-    if (!current || current.killed) {
+  private stopSource(source: PcmSource | null): void {
+    if (!source || source.process.killed) {
       return;
     }
 
-    current.kill("SIGKILL");
+    source.process.kill("SIGKILL");
   }
 }
