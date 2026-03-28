@@ -11,6 +11,7 @@ import {
   VoiceConnectionStatus,
   createAudioPlayer,
   createAudioResource,
+  entersState,
   joinVoiceChannel,
 } from "@discordjs/voice";
 import { Client, Guild } from "discord.js";
@@ -53,6 +54,7 @@ interface BroadcastSession {
   mixer: AudioMixer | null;
   resultSource: PcmSource | null;
   destroyAfterResult: boolean;
+  pendingReadyReplay: NodeJS.Timeout | null;
 }
 
 export interface LiarAudioContext {
@@ -202,6 +204,10 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       return;
     }
 
+    if (session.pendingReadyReplay) {
+      clearTimeout(session.pendingReadyReplay);
+      session.pendingReadyReplay = null;
+    }
     this.stopMixer(session);
     this.stopSource(session.resultSource);
     session.resultSource = null;
@@ -269,13 +275,6 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       selfDeaf: true,
     });
 
-    connection.subscribe(player);
-    connection.on("stateChange", (_oldState, newState) => {
-      if (newState.status === VoiceConnectionStatus.Disconnected) {
-        console.warn(`liar voice connection disconnected in guild ${guild.id}`);
-      }
-    });
-
     const session: BroadcastSession = {
       guildId: guild.id,
       player,
@@ -284,7 +283,18 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
       mixer: null,
       resultSource: null,
       destroyAfterResult: false,
+      pendingReadyReplay: null,
     };
+
+    connection.subscribe(player);
+    connection.on("stateChange", (_oldState, newState) => {
+      if (newState.status === VoiceConnectionStatus.Ready) {
+        this.scheduleReadyReplay(session);
+      }
+      if (newState.status === VoiceConnectionStatus.Disconnected) {
+        console.warn(`liar voice connection disconnected in guild ${guild.id}`);
+      }
+    });
 
     player.on(AudioPlayerStatus.Idle, () => {
       if (session.resultSource && session.destroyAfterResult) {
@@ -335,6 +345,51 @@ export class DiscordVoiceLiarAudioController implements LiarAudioController {
     session.mixer.bgmKey = bgmKey;
     this.stopSource(session.mixer.bgmSource);
     session.mixer.bgmSource = bgmKey ? this.createPcmSource(bgmKey) : null;
+  }
+
+  private scheduleReadyReplay(session: BroadcastSession): void {
+    if (session.pendingReadyReplay) {
+      clearTimeout(session.pendingReadyReplay);
+    }
+
+    session.pendingReadyReplay = setTimeout(() => {
+      session.pendingReadyReplay = null;
+      void this.replayCurrentAudio(session.guildId);
+    }, 150);
+    session.pendingReadyReplay.unref?.();
+  }
+
+  private async replayCurrentAudio(guildId: string): Promise<void> {
+    const session = this.sessions.get(guildId);
+    if (!session) {
+      return;
+    }
+
+    try {
+      await entersState(session.connection, VoiceConnectionStatus.Ready, 2_000);
+    } catch {
+      return;
+    }
+
+    if (session.resultSource) {
+      const resultKey = session.resultSource.key as ResultTrackKey;
+      this.stopSource(session.resultSource);
+      session.resultSource = null;
+      this.playResultTrack(session, resultKey);
+      return;
+    }
+
+    if (!session.mixer) {
+      return;
+    }
+
+    const bgmKey = session.mixer.bgmKey;
+    const overlayKeys = session.mixer.overlays.map((overlay) => overlay.key as OverlayTrackKey);
+    this.stopMixer(session);
+    this.startMixer(session, bgmKey);
+    for (const overlayKey of overlayKeys) {
+      this.enqueueOverlay(session, overlayKey);
+    }
   }
 
   private stopMixer(session: BroadcastSession): void {
