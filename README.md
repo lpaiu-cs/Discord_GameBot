@@ -20,6 +20,7 @@
 - [mafia/ABOUT.md](./mafia/ABOUT.md)
 - [liar/ABOUT.md](./liar/ABOUT.md)
 - [liar/PLAN.md](./liar/PLAN.md)
+- [business_plan.md](./business_plan.md)
 - [mafia/docs/game-platform-refactor-plan.md](./mafia/docs/game-platform-refactor-plan.md)
 
 ## 빠른 시작

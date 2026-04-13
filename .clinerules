@@ -1,0 +1,22 @@
+# .clinerules
+
+이 저장소에서는 아래 규칙을 기본 행동 지침으로 사용한다.
+
+1. 시작 전에 `AGENTS.md` 와 `@memory/README.md`, `@memory/current_context.md`, `@memory/repo_map.md`, `@memory/data_models.md`, `@memory/milestones.md` 를 읽는다.
+2. 마피아 규칙은 `mafia/docs/RULE.md` 를 단일 기준으로 삼고, 공개 자료로 확정되지 않은 시즌4 상호작용은 코드에 하드코딩하지 않는다.
+3. `liar` 는 Discord 채널 기반, `mafia` 는 Discord 로비 + 웹 대시보드 기반이라는 제품 경계를 유지한다.
+4. 큰 작업은 바로 구현하지 말고 마일스톤으로 쪼갠다. 가능하면 `goal`, `files`, `tests`, `exit criteria` 를 먼저 적는다.
+5. `test-driven prompting` 을 기본으로 한다. 가능하면 실패하는 테스트나 검증 기준을 먼저 만들고, 최소 구현으로 통과시킨다.
+6. 변경 범위에 맞는 최소 테스트부터 실행하고, 필요 시 전체 `npm test` 로 넓힌다.
+7. 문서 작업일 때는 테스트를 억지로 만들지 말고, 대신 관련 문서와 `@memory/*` 를 정확히 갱신한다.
+8. 구조가 바뀌면 `@memory/repo_map.md`, 상태/타입/DB가 바뀌면 `@memory/data_models.md`, 작업 상태가 바뀌면 `@memory/current_context.md` 와 `@memory/milestones.md` 를 갱신한다.
+9. `AGENTS.md` 나 `.clinerules` 를 바꾸면 `@memory/agent_changelog.md` 를 같이 갱신한다.
+10. 장기 프로젝트 특성상 에이전트는 이전 맥락을 잃는다. 긴 설명보다 다음 에이전트가 즉시 이어받을 수 있는 압축된 메모를 남긴다.
+11. 사용자가 요청하지 않은 광범위 리팩터, 규칙 확장, 브랜딩 변경은 하지 않는다.
+12. 기존 사용자 변경사항은 되돌리지 않는다.
+
+실행 힌트:
+
+- 전체 테스트: `npm test`
+- 라이어 중심 확인: `tsx --test liar/tests/all.test.ts`
+- 마피아 중심 확인: `tsx --test mafia/tests/all.test.ts`
